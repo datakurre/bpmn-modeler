@@ -539,8 +539,8 @@ describe("selection-layout", () => {
             expect(mockCommandStack.execute).toHaveBeenCalledTimes(1);
             expect(mockCommandStack.execute).toHaveBeenCalledWith("selectiveLayout.execute", {
                 moves: [
-                    { shape: elements.Task_1, delta: { x: 200, y: 150 } },
-                    { shape: elements.Task_1_label, delta: { x: 200, y: 150 } },
+                    { shape: elements.Task_1, target: { x: 200, y: 150 } },
+                    { shape: elements.Task_1_label, target: { x: 205, y: 235 } },
                 ],
                 waypoints: [
                     {
@@ -553,6 +553,33 @@ describe("selection-layout", () => {
                 ],
                 boundaryFlows: [],
             });
+        });
+
+        it("re-attaches boundary events to their host when moving them", () => {
+            const host = { id: "Task_1", x: 0, y: 0, width: 100, height: 80 };
+            const boundary = { id: "Boundary_1", x: 10, y: 10, host };
+            elements.Boundary_1 = boundary;
+            const modeler = {
+                get: (service: string) => {
+                    if (service === "modeling") return mockModeling;
+                    if (service === "commandStack") return {};
+                    if (service === "elementRegistry") return mockElementRegistry;
+                    return null;
+                },
+            };
+
+            applyFullDiagramLayout(modeler, {
+                shapes: new Map([["Boundary_1", { x: 20, y: 30, width: 36, height: 36 }]]),
+                labels: new Map(),
+                edges: new Map(),
+            });
+
+            expect(mockModeling.moveElements).toHaveBeenCalledWith(
+                [boundary],
+                { x: 10, y: 20 },
+                host,
+                { attach: true },
+            );
         });
     });
 });

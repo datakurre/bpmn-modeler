@@ -293,13 +293,34 @@ export function computeCenterOffset(
 
 let commandHandlerRegistered = false;
 
+interface PendingMove {
+    shape: any;
+    target: { x: number; y: number };
+}
+
+/**
+ * Moves a shape to its absolute target. The delta is resolved at execution
+ * time because earlier moves drag attached labels and boundary events along,
+ * which would make a delta computed up front overshoot.
+ */
+function applyMove(modeling: any, move: PendingMove): void {
+    const delta = { x: move.target.x - move.shape.x, y: move.target.y - move.shape.y };
+    if (move.shape.host) {
+        // Moving an attached shape without its host would detach it, so
+        // re-attach it to the host it already belongs to.
+        modeling.moveElements([move.shape], delta, move.shape.host, { attach: true });
+        return;
+    }
+    modeling.moveElements([move.shape], delta);
+}
+
 function ensureCommandHandler(commandStack: any, modeling: any) {
     if (commandHandlerRegistered) return;
     try {
         commandStack.register("selectiveLayout.execute", {
             preExecute(context: any) {
                 for (const move of context.moves) {
-                    modeling.moveElements([move.shape], move.delta);
+                    applyMove(modeling, move);
                 }
                 for (const wp of context.waypoints) {
                     modeling.updateWaypoints(wp.flow, wp.points);
@@ -329,19 +350,11 @@ export function applySelectiveLayout(
     const commandStack = modeler.get("commandStack");
     const { dx, dy } = computeCenterOffset(analysis.nodes, geometry);
 
-    const moves: Array<{ shape: any; delta: { x: number; y: number } }> = [];
+    const moves: PendingMove[] = [];
     for (const node of analysis.nodes) {
         const g = geometry.shapes.get(node.id);
         if (g) {
-            const targetX = g.x + dx;
-            const targetY = g.y + dy;
-            moves.push({
-                shape: node,
-                delta: {
-                    x: targetX - node.x,
-                    y: targetY - node.y,
-                },
-            });
+            moves.push({ shape: node, target: { x: g.x + dx, y: g.y + dy } });
         }
     }
 
@@ -368,7 +381,7 @@ export function applySelectiveLayout(
     } else {
         // Fallback for direct execution
         for (const move of moves) {
-            modeling.moveElements([move.shape], move.delta);
+            applyMove(modeling, move);
         }
         for (const wp of waypoints) {
             modeling.updateWaypoints(wp.flow, wp.points);
@@ -390,14 +403,11 @@ export function applyFullDiagramLayout(modeler: any, geometry: LaidOutGeometry):
     const commandStack = modeler.get("commandStack");
     const elementRegistry = modeler.get("elementRegistry");
 
-    const moves: Array<{ shape: any; delta: { x: number; y: number } }> = [];
+    const moves: PendingMove[] = [];
     const collectMove = (id: string, target: { x: number; y: number }) => {
         const element = elementRegistry.get(id);
         if (!element) return;
-        moves.push({
-            shape: element,
-            delta: { x: target.x - element.x, y: target.y - element.y },
-        });
+        moves.push({ shape: element, target: { x: target.x, y: target.y } });
     };
     for (const [id, bounds] of geometry.shapes) {
         collectMove(id, bounds);
@@ -421,7 +431,7 @@ export function applyFullDiagramLayout(modeler: any, geometry: LaidOutGeometry):
         commandStack.execute("selectiveLayout.execute", context);
     } else {
         for (const move of moves) {
-            modeling.moveElements([move.shape], move.delta);
+            applyMove(modeling, move);
         }
         for (const wp of waypoints) {
             modeling.updateWaypoints(wp.flow, wp.points);
