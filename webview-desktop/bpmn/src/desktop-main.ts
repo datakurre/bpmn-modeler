@@ -136,6 +136,7 @@ window.addEventListener("keydown", (event) => {
     if (event.key === "Escape") {
         hideShortcutsHelp();
         hideCandidateChooser();
+        getModelerInstance()?.get<any>("toggleMode").toggleMode(false);
         return;
     }
 
