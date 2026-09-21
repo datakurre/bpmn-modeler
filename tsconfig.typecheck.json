@@ -1,0 +1,15 @@
+{
+  "extends": "./tsconfig.json",
+  "include": [
+    "shell/src/**/*",
+    "webview-desktop/bpmn/src/**/*",
+    "webview-desktop/dmn/src/**/*",
+    "webview-desktop/form/src/**/*",
+    "webview-desktop/shared/**/*"
+  ],
+  "exclude": [
+    "**/*.test.ts",
+    "**/*.spec.ts",
+    "webview-desktop/dmn/src/desktop-main.ts"
+  ]
+}

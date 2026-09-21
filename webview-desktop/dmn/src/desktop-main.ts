@@ -23,6 +23,12 @@ import {
 } from "../../../vendor/dmn-js-modeler/webview/src/modeler";
 import { createEvaluationPanel } from "../../../vendor/dmn-js-modeler/webview/src/evaluation-panel";
 import { focusNextTab, focusPreviousTab } from "../../shared/tab-cycle";
+import {
+    basenameOf,
+    formatError,
+    showDesktopStatus,
+    updateDesktopStatus,
+} from "../../shared/desktop-editor";
 
 interface TabDocument {
     tabId: string;
@@ -50,10 +56,6 @@ let dirty = false;
 let hasBeenSaved = false;
 let evaluationPanel: ReturnType<typeof createEvaluationPanel> | null = null;
 let initializing = true;
-
-function basenameOf(path: string): string {
-    return path.split(/[\\/]/).pop() ?? path;
-}
 
 window.addEventListener("load", () => {
     void initialize();
@@ -195,33 +197,16 @@ async function saveDocument(): Promise<void> {
 }
 
 function updateStatus(): void {
-    const status = document.getElementById("desktop-status");
-    const dot = status?.querySelector(".desktop-status-dot");
-    const label = status?.querySelector(".desktop-status-label");
-    const filenameElement = status?.querySelector(".desktop-status-filename");
-    if (!status || !dot || !label || !filenameElement) return;
-
-    const state = !hasBeenSaved ? "never-saved" : dirty ? "unsaved" : "saved";
-    dot.className = `desktop-status-dot ${state}`;
-    label.textContent = !hasBeenSaved ? "Never saved" : dirty ? "Unsaved changes" : "Saved";
-    filenameElement.textContent = filePath ? basenameOf(filePath) : "Untitled.dmn";
+    updateDesktopStatus({
+        filePath,
+        dirty,
+        hasBeenSaved,
+        defaultFilename: "Untitled.dmn",
+    });
 }
 
 function showStatus(message: string): void {
-    const status = document.getElementById("desktop-status");
-    const label = status?.querySelector(".desktop-status-label");
-    const filenameElement = status?.querySelector(".desktop-status-filename");
-    const dot = status?.querySelector(".desktop-status-dot");
-    if (!status || !label || !filenameElement || !dot) return;
-
-    label.textContent = message;
-    filenameElement.textContent = "";
-    dot.className = "desktop-status-dot";
-    console.error(message);
-}
-
-function formatError(error: unknown): string {
-    return error instanceof Error ? error.message : String(error);
+    showDesktopStatus(message);
 }
 
 function showShortcutsHelp(x: number, y: number): void {

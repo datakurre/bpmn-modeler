@@ -3,7 +3,6 @@ import BpmnModeler from "camunda-bpmn-js/lib/camunda-platform/Modeler";
 import { ImportXMLError, ImportXMLResult, SaveXMLResult } from "bpmn-js/lib/BaseViewer";
 import TokenSimulationModule from "bpmn-js-token-simulation";
 import ElementTemplateChooserModule from "@bpmn-io/element-template-chooser";
-/* @ts-expect-error - RobotModule does not have type definitions */
 import RobotModule from "camunda-modeler-robot-plugin/dist/module";
 import { CreateAppendElementTemplatesModule } from "bpmn-js-create-append-anything";
 /* @ts-expect-error - TransactionBoundariesModule does not have type definitions */

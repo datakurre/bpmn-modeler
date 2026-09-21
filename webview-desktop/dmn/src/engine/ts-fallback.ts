@@ -103,7 +103,7 @@ export function evaluateDecisionTs(
 interface DecisionLike {
     id: string;
     name: string;
-    logic: { type: string; [key: string]: unknown } | null;
+    logic: any;
 }
 
 function evaluateOneDecision(
@@ -123,7 +123,11 @@ function evaluateOneDecision(
     }
 
     if (decision.logic.type === "literalExpression") {
-        return evaluateLiteralExpression(decision.logic as LiteralExprLogic, context, base);
+        return evaluateLiteralExpression(
+            decision.logic as unknown as LiteralExprLogic,
+            context,
+            base,
+        );
     }
 
     if (decision.logic.type === "decisionTable") {

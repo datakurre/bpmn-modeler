@@ -1,4 +1,4 @@
-import type { ResolvedLink, ResourceIndex } from "../../src/linkedResources";
+import type { ResolvedLink, ResourceIndex } from "./linkedResources";
 import {
     buildDirectoryIndex,
     computeLinkedResources,

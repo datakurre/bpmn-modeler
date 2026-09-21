@@ -46,17 +46,17 @@
     "bpmnRepo": {
       "flake": false,
       "locked": {
-        "lastModified": 1789885019,
-        "narHash": "sha256-uliAASRxT0WrFYA4ERNjs2jdUyAckIC1am3/Bke/xl4=",
+        "lastModified": 1789978540,
+        "narHash": "sha256-ghZd3FPTOOyy+Yl+pejo/n/btOx9P5uJykxu7BrZaXQ=",
         "ref": "refs/heads/main",
-        "rev": "9d6a81b4ffb444499b81bd4721d2f2d03482c023",
-        "revCount": 321,
+        "rev": "cea0883b1b5a5672b8f6453da8d2e8f86e8c1ef9",
+        "revCount": 323,
         "type": "git",
-        "url": "file:./vscode-operaton-bpmn-js-modeler"
+        "url": "https://gitlab.com/vasara-bpm/vscode-operaton-bpmn-js-modeler.git"
       },
       "original": {
         "type": "git",
-        "url": "file:./vscode-operaton-bpmn-js-modeler"
+        "url": "https://gitlab.com/vasara-bpm/vscode-operaton-bpmn-js-modeler.git"
       }
     },
     "dmnRepo": {
@@ -68,11 +68,11 @@
         "rev": "f281d3404ef09057b36c02986b49a49ed7b3c422",
         "revCount": 295,
         "type": "git",
-        "url": "file:./vscode-operaton-dmn-js-modeler"
+        "url": "https://gitlab.com/vasara-bpm/vscode-operaton-dmn-js-modeler.git"
       },
       "original": {
         "type": "git",
-        "url": "file:./vscode-operaton-dmn-js-modeler"
+        "url": "https://gitlab.com/vasara-bpm/vscode-operaton-dmn-js-modeler.git"
       }
     },
     "flake-utils": {
@@ -96,17 +96,17 @@
     "formRepo": {
       "flake": false,
       "locked": {
-        "lastModified": 1788891942,
-        "narHash": "sha256-72nYOXi/dkqn+NGu3Arths9DTlxBBqy3OkW7has8nWI=",
+        "lastModified": 1789978541,
+        "narHash": "sha256-ow74e0KAP4IRNweoJC2dIamUsLWdqkvcbd2Ob2EkFo4=",
         "ref": "refs/heads/main",
-        "rev": "f05d9a67bcd4ba99e54de40b12b457005cacdfd5",
-        "revCount": 51,
+        "rev": "5198c5412b872f5180c450e43276b108167d911d",
+        "revCount": 53,
         "type": "git",
-        "url": "file:./vscode-operaton-form-js-modeler"
+        "url": "https://gitlab.com/vasara-bpm/vscode-operaton-form-js-modeler.git"
       },
       "original": {
         "type": "git",
-        "url": "file:./vscode-operaton-form-js-modeler"
+        "url": "https://gitlab.com/vasara-bpm/vscode-operaton-form-js-modeler.git"
       }
     },
     "nixpkgs": {

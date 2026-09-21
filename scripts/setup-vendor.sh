@@ -6,6 +6,8 @@ ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 mkdir -p "$ROOT_DIR/vendor"
 
+AUTO_LAYOUT_REV="a8881e585339c1bdbff150e542db45f5aab32c78"
+
 ln -sfn "$ROOT_DIR/vscode-operaton-bpmn-js-modeler" "$ROOT_DIR/vendor/bpmn-js-modeler"
 ln -sfn "$ROOT_DIR/vscode-operaton-dmn-js-modeler" "$ROOT_DIR/vendor/dmn-js-modeler"
 ln -sfn "$ROOT_DIR/vscode-operaton-form-js-modeler" "$ROOT_DIR/vendor/form-js-modeler"
@@ -13,6 +15,9 @@ ln -sfn "$ROOT_DIR/vscode-operaton-form-js-modeler" "$ROOT_DIR/vendor/form-js-mo
 if [ ! -d "$ROOT_DIR/vendor/bpmn-auto-layout" ]; then
     git clone https://github.com/datakurre/bpmn-auto-layout.git "$ROOT_DIR/vendor/bpmn-auto-layout"
 fi
+
+git -C "$ROOT_DIR/vendor/bpmn-auto-layout" fetch --quiet origin "$AUTO_LAYOUT_REV"
+git -C "$ROOT_DIR/vendor/bpmn-auto-layout" checkout --quiet --detach "$AUTO_LAYOUT_REV"
 
 if [ ! -f "$ROOT_DIR/vendor/bpmn-auto-layout/dist/index.js" ]; then
     (

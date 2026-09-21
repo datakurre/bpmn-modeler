@@ -10,8 +10,10 @@
     "build:bpmn": "vite build --config webview-desktop/bpmn/vite.config.mts",
     "build:dmn": "vite build --config webview-desktop/dmn/vite.config.mts",
     "build:form": "vite build --config webview-desktop/form/vite.config.mts",
-    "build:webview:desktop": "npm run build:shell && npm run build:bpmn && npm run build:dmn && npm run build:form",
+    "build:webview:desktop": "npm run build:shell && npm run build:bpmn && npm run build:dmn && npm run build:form && npm run check:bundles",
+    "check:bundles": "node scripts/check-bundle-size.mjs",
     "dev:webview:desktop": "vite --config vite.dev.config.mts",
+    "typecheck": "tsc --noEmit -p tsconfig.typecheck.json",
     "desktop:dev": "cd desktop/src-tauri && npx tauri dev",
     "desktop:build": "cd desktop/src-tauri && npx tauri build",
     "desktop:build:binary": "cd desktop/src-tauri && npx tauri build --no-bundle"

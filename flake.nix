@@ -7,15 +7,15 @@
     inputs.nixpkgs.follows = "nixpkgs";
   };
   inputs.bpmnRepo = {
-    url = "git+file:./vscode-operaton-bpmn-js-modeler";
+    url = "git+https://gitlab.com/vasara-bpm/vscode-operaton-bpmn-js-modeler.git";
     flake = false;
   };
   inputs.dmnRepo = {
-    url = "git+file:./vscode-operaton-dmn-js-modeler";
+    url = "git+https://gitlab.com/vasara-bpm/vscode-operaton-dmn-js-modeler.git";
     flake = false;
   };
   inputs.formRepo = {
-    url = "git+file:./vscode-operaton-form-js-modeler";
+    url = "git+https://gitlab.com/vasara-bpm/vscode-operaton-form-js-modeler.git";
     flake = false;
   };
 
@@ -47,16 +47,23 @@
             pkg-config
             gtk3
             webkitgtk_4_1
-            maven
-            sbt-with-scala-native
-            temurin-bin-21
             gnumake
-            curl
           ];
 
           shellHook = ''
             export WEBKIT_DISABLE_COMPOSITING_MODE="''${WEBKIT_DISABLE_COMPOSITING_MODE:-1}"
           '';
+        };
+
+        extension-dev = pkgs.mkShell {
+          packages = with pkgs; [
+            nodejs
+            jq
+            maven
+            sbt-with-scala-native
+            temurin-bin-21
+            curl
+          ];
         };
       });
 
@@ -80,6 +87,12 @@
           npmInstallFlags = [ "--ignore-scripts" ];
           npmRebuildFlags = [ "--ignore-scripts" ];
           npmBuildScript = "build:webview:desktop";
+          doCheck = true;
+          checkPhase = ''
+            runHook preCheck
+            npm run typecheck
+            runHook postCheck
+          '';
 
           preBuild = ''
             mkdir -p vendor/bpmn-js-modeler vendor/dmn-js-modeler vendor/form-js-modeler
@@ -172,7 +185,8 @@
       });
 
       checks = forAllSystems (pkgs: {
-        flake-evaluation = self.packages.${pkgs.stdenv.hostPlatform.system}.default;
+        build = self.packages.${pkgs.stdenv.hostPlatform.system}.default;
+        frontend = self.packages.${pkgs.stdenv.hostPlatform.system}.frontend;
       });
 
       formatter = forAllSystems (pkgs: pkgs.nixfmt-tree);

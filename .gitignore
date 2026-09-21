@@ -5,6 +5,7 @@ result
 vendor/bpmn-js-modeler
 vendor/dmn-js-modeler
 vendor/form-js-modeler
+vendor/bpmn-auto-layout/
 desktop/src-tauri/target
 *.tmp
 vscode-operaton-bpmn-js-modeler

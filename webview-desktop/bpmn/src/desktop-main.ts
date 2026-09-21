@@ -32,6 +32,12 @@ import {
     parseLaidOutGeometry,
 } from "./selection-layout";
 import { focusNextTab, focusPreviousTab } from "../../shared/tab-cycle";
+import {
+    basenameOf,
+    formatError,
+    showDesktopStatus,
+    updateDesktopStatus,
+} from "../../shared/desktop-editor";
 
 interface TabDocument {
     tabId: string;
@@ -51,10 +57,6 @@ let scannedDirectory: string | null = null;
 let siblingFiles: Map<string, string> = new Map();
 let directoryIndex: ResourceIndex = { processes: [], decisions: [], forms: [] };
 let chooserElement: HTMLElement | null = null;
-
-function basenameOf(path: string): string {
-    return path.split(/[\\/]/).pop() ?? path;
-}
 
 function dirnameOf(path: string): string {
     const idx = Math.max(path.lastIndexOf("/"), path.lastIndexOf("\\"));
@@ -285,10 +287,6 @@ function showCandidateChooser(candidates: CallerCandidate[]): void {
     chooserElement.hidden = false;
 }
 
-function formatError(error: unknown): string {
-    return error instanceof Error ? error.message : String(error);
-}
-
 function showShortcutsHelp(x: number, y: number): void {
     const help = document.getElementById("desktop-shortcuts-help");
     if (!help) return;
@@ -329,27 +327,14 @@ async function autoLayout(): Promise<void> {
 }
 
 function updateStatus(): void {
-    const status = document.getElementById("desktop-status");
-    const dot = status?.querySelector(".desktop-status-dot");
-    const label = status?.querySelector(".desktop-status-label");
-    const filenameElement = status?.querySelector(".desktop-status-filename");
-    if (!status || !dot || !label || !filenameElement) return;
-
-    const state = !hasBeenSaved ? "never-saved" : dirty ? "unsaved" : "saved";
-    dot.className = `desktop-status-dot ${state}`;
-    label.textContent = !hasBeenSaved ? "Never saved" : dirty ? "Unsaved changes" : "Saved";
-    filenameElement.textContent = filePath ? basenameOf(filePath) : "Untitled.bpmn";
+    updateDesktopStatus({
+        filePath,
+        dirty,
+        hasBeenSaved,
+        defaultFilename: "Untitled.bpmn",
+    });
 }
 
 function showStatus(message: string): void {
-    const status = document.getElementById("desktop-status");
-    const label = status?.querySelector(".desktop-status-label");
-    const filenameElement = status?.querySelector(".desktop-status-filename");
-    const dot = status?.querySelector(".desktop-status-dot");
-    if (!status || !label || !filenameElement || !dot) return;
-
-    label.textContent = message;
-    filenameElement.textContent = "";
-    dot.className = "desktop-status-dot";
-    console.error(message);
+    showDesktopStatus(message);
 }
