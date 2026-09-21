@@ -38,6 +38,11 @@ declare module "bpmn-js-token-simulation/lib/features/token-count/TokenCount" {
     export default mod;
 }
 
+declare module "bpmn-js-token-simulation/lib/features/show-scopes/ShowScopes" {
+    const mod: any;
+    export default mod;
+}
+
 declare module "bpmn-js-token-simulation/lib/animation/Animation" {
     const mod: any;
     export default mod;
