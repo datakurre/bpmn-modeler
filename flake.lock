@@ -8,11 +8,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1789979493,
-        "narHash": "sha256-eZ14FCgCjQvUUR2oHaxcTTCLUlRjl1q+K6XJyIvD1AY=",
+        "lastModified": 1790009291,
+        "narHash": "sha256-2ooxZa1LcwrZYTDht0jt9ovefjQC9fgwfLGPSBzstb8=",
         "owner": "datakurre",
         "repo": "bpmn-auto-layout",
-        "rev": "2c639063cb61c399169ac223c30da35b23cb902d",
+        "rev": "16416534b1c7226adf24a332f0f3657f66d8dba9",
         "type": "github"
       },
       "original": {

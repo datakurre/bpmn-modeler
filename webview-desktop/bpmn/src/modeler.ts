@@ -2,6 +2,7 @@ import Modeler from "camunda-bpmn-js/lib/base/Modeler";
 import BpmnModeler from "camunda-bpmn-js/lib/camunda-platform/Modeler";
 import { ImportXMLError, ImportXMLResult, SaveXMLResult } from "bpmn-js/lib/BaseViewer";
 import TokenSimulationModule from "bpmn-js-token-simulation";
+import TokenNumbersModule from "./token-numbers";
 import ElementTemplateChooserModule from "@bpmn-io/element-template-chooser";
 import RobotModule from "camunda-modeler-robot-plugin/dist/module";
 import { CreateAppendElementTemplatesModule } from "bpmn-js-create-append-anything";
@@ -72,6 +73,7 @@ export function createModeler(options: { minimal?: boolean; comments?: boolean }
     if (!options.minimal) {
         additionalModules.push(
             TokenSimulationModule,
+            TokenNumbersModule,
             RobotModule,
             LinkedResourceOverlaysModule,
             ScriptEditorModule,

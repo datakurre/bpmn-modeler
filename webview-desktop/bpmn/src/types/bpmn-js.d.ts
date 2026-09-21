@@ -33,6 +33,16 @@ declare module "bpmn-js-token-simulation" {
     export default mod;
 }
 
+declare module "bpmn-js-token-simulation/lib/features/token-count/TokenCount" {
+    const mod: any;
+    export default mod;
+}
+
+declare module "bpmn-js-token-simulation/lib/animation/Animation" {
+    const mod: any;
+    export default mod;
+}
+
 declare module "bpmn-js-create-append-anything" {
     export const CreateAppendElementTemplatesModule: any;
 }
