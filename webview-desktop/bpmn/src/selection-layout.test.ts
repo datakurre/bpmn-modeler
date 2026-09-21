@@ -555,6 +555,34 @@ describe("selection-layout", () => {
             });
         });
 
+        it("aligns labels by center so the editor's own label width keeps the text centered", () => {
+            const modeler = {
+                get: (service: string) => {
+                    if (service === "modeling") return mockModeling;
+                    if (service === "commandStack") return {};
+                    if (service === "elementRegistry") return mockElementRegistry;
+                    return null;
+                },
+            };
+
+            // Layout estimated a 40px wide label; the editor's label is 90px wide.
+            applyFullDiagramLayout(modeler, {
+                shapes: new Map(),
+                labels: new Map([
+                    ["Task_1_label", { x: 200, y: 100, width: 40, height: 14 }],
+                    ["Unknown_label", { x: 0, y: 0, width: 10, height: 10 }],
+                ]),
+                edges: new Map(),
+            });
+
+            // Center (220, 107) -> top-left (175, 100) for a 90x14 label.
+            expect(mockModeling.moveElements).toHaveBeenCalledTimes(1);
+            expect(mockModeling.moveElements).toHaveBeenCalledWith([elements.Task_1_label], {
+                x: 170,
+                y: 15,
+            });
+        });
+
         it("re-attaches boundary events to their host when moving them", () => {
             const host = { id: "Task_1", x: 0, y: 0, width: 100, height: 80 };
             const boundary = { id: "Boundary_1", x: 10, y: 10, host };

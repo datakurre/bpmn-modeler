@@ -412,8 +412,16 @@ export function applyFullDiagramLayout(modeler: any, geometry: LaidOutGeometry):
     for (const [id, bounds] of geometry.shapes) {
         collectMove(id, bounds);
     }
+    // bpmn-js keeps each label at the size it measured for the real font, not
+    // the layout engine's estimate, so align labels by center to keep the text
+    // centered on its element.
     for (const [id, bounds] of geometry.labels) {
-        collectMove(id, bounds);
+        const label = elementRegistry.get(id);
+        if (!label) continue;
+        collectMove(id, {
+            x: bounds.x + bounds.width / 2 - label.width / 2,
+            y: bounds.y + bounds.height / 2 - label.height / 2,
+        });
     }
 
     const waypoints: Array<{ flow: any; points: Array<{ x: number; y: number }> }> = [];
