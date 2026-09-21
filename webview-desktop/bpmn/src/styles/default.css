@@ -423,3 +423,9 @@ body.desktop .desktop-tab-chooser button:hover {
     opacity: 1;
     transform: scale(1.1);
 }
+
+/* The bpmnlint summary badge sits bottom-center and would cover the token
+   simulator's controls, so hide it while the simulation is active. */
+.bjs-container.simulation .bjsl-button {
+    display: none;
+}
