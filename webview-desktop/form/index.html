@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>Operaton Form Editor</title>
+    </head>
+    <body class="desktop">
+        <main id="app"></main>
+        <div class="desktop-status" id="desktop-status" role="status" aria-live="polite">
+            <div class="desktop-status-state">
+                <span class="desktop-status-dot" aria-hidden="true"></span>
+                <span class="desktop-status-label"></span>
+            </div>
+            <div class="desktop-status-filename"></div>
+        </div>
+        <aside id="desktop-shortcuts-help" class="desktop-shortcuts-help" hidden>
+            <h2>Keyboard shortcuts</h2>
+            <dl>
+                <div>
+                    <dt>Save</dt>
+                    <dd>Ctrl/Cmd + S</dd>
+                </div>
+                <div>
+                    <dt>Quit</dt>
+                    <dd>Ctrl/Cmd + Q</dd>
+                </div>
+                <div>
+                    <dt>Undo</dt>
+                    <dd>Ctrl/Cmd + Z</dd>
+                </div>
+                <div>
+                    <dt>Redo</dt>
+                    <dd>Ctrl/Cmd + Y</dd>
+                </div>
+                <div>
+                    <dt>Next tab</dt>
+                    <dd>Ctrl/Cmd + Tab</dd>
+                </div>
+                <div>
+                    <dt>Previous tab</dt>
+                    <dd>Ctrl/Cmd + Shift + Tab</dd>
+                </div>
+                <div>
+                    <dt>Show this help</dt>
+                    <dd>Right-click</dd>
+                </div>
+            </dl>
+        </aside>
+        <script type="module" src="./src/desktop-main.ts"></script>
+    </body>
+</html>

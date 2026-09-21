@@ -1,0 +1,12 @@
+node_modules
+dist
+target
+result
+vendor/bpmn-js-modeler
+vendor/dmn-js-modeler
+vendor/form-js-modeler
+desktop/src-tauri/target
+*.tmp
+vscode-operaton-bpmn-js-modeler
+vscode-operaton-dmn-js-modeler
+vscode-operaton-form-js-modeler

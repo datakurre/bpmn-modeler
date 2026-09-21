@@ -1,0 +1,49 @@
+{
+    "$schema": "https://schema.tauri.app/config/2",
+    "productName": "Operaton Modeler",
+    "version": "0.1.0",
+    "identifier": "org.operaton.modeler",
+    "build": {
+        "beforeDevCommand": "npm --prefix .. run dev:webview:desktop",
+        "beforeBuildCommand": "npm --prefix .. run build:webview:desktop",
+        "devUrl": "http://localhost:1420",
+        "frontendDist": "../../dist/desktop"
+    },
+    "app": {
+        "windows": [
+            {
+                "label": "main",
+                "title": "Operaton Modeler",
+                "width": 1280,
+                "height": 840,
+                "minWidth": 640,
+                "minHeight": 400,
+                "resizable": true,
+                "decorations": false,
+                "create": false
+            }
+        ],
+        "security": {
+            "csp": "default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-eval' 'wasm-unsafe-eval'; font-src 'self' data:; img-src 'self' data: blob:"
+        }
+    },
+    "bundle": {
+        "active": true,
+        "targets": ["appimage", "deb"],
+        "icon": [
+            "icons/32x32.png",
+            "icons/64x64.png",
+            "icons/128x128.png",
+            "icons/128x128@2x.png",
+            "icons/icon.ico",
+            "icons/icon.icns"
+        ],
+        "shortDescription": "Operaton Modeler",
+        "longDescription": "Desktop modeler for BPMN, DMN, and Form definitions.",
+        "linux": {
+            "deb": {
+                "depends": ["libwebkit2gtk-4.1-0", "libgtk-3-0"]
+            }
+        }
+    }
+}

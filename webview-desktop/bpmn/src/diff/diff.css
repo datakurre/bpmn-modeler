@@ -1,0 +1,587 @@
+/* BPMN Diff Viewer Styles */
+
+html,
+body {
+    margin: 0;
+    padding: 0;
+    height: 100%;
+    overflow: hidden;
+    font-family: var(--vscode-font-family, -apple-system, BlinkMacSystemFont, sans-serif);
+    font-size: var(--vscode-font-size, 13px);
+    color: var(--vscode-foreground, #333);
+    background: var(--vscode-editor-background, #fff);
+}
+
+/* Main layout: sidebar | (canvas + bottom bar) */
+#diff-container {
+    display: flex;
+    height: 100vh;
+    width: 100vw;
+}
+
+#diff-main {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+}
+
+/* Canvas fills available space; white background for the diagram */
+#diff-canvas {
+    flex: 1;
+    position: relative;
+    background: #ffffff;
+}
+
+/* Changeset selector bar below the diagram — stacks as two rows */
+#diff-changeset-bar {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 6px 12px;
+    border-top: 1px solid var(--vscode-panel-border, #e0e0e0);
+    background: var(--vscode-sideBar-background, #f3f3f3);
+    min-height: 58px;
+}
+
+.changeset-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.changeset-label {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--vscode-descriptionForeground, #666);
+    white-space: nowrap;
+}
+
+.changeset-select {
+    flex: 1;
+    max-width: 500px;
+    padding: 3px 6px;
+    font-size: 12px;
+    font-family: inherit;
+    color: var(--vscode-dropdown-foreground, #333);
+    background: var(--vscode-dropdown-background, #fff);
+    border: 1px solid var(--vscode-dropdown-border, #c8c8c8);
+    border-radius: 3px;
+    cursor: pointer;
+    outline: none;
+    appearance: auto;
+}
+
+.changeset-select:focus {
+    border-color: var(--vscode-focusBorder, #0078d4);
+}
+
+/* Sidebar with legend and changes list */
+#diff-sidebar {
+    width: 260px;
+    min-width: 200px;
+    height: 100%;
+    overflow-y: auto;
+    border-left: 1px solid var(--vscode-panel-border, #e0e0e0);
+    background: var(--vscode-sideBar-background, #f3f3f3);
+    padding: 12px;
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+/* Legend */
+#diff-legend h3 {
+    margin: 0 0 8px 0;
+    font-size: 13px;
+    font-weight: 600;
+}
+
+.legend-items {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.legend-item {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 8px;
+    border-radius: 3px;
+    font-size: 11px;
+    font-weight: 500;
+    cursor: pointer;
+    user-select: none;
+    transition:
+        opacity 0.15s,
+        text-decoration 0.15s;
+}
+
+.legend-item:focus-visible {
+    outline: 2px solid currentColor;
+    outline-offset: 2px;
+}
+
+.legend-item.disabled {
+    opacity: 0.4;
+    text-decoration: line-through;
+}
+
+.legend-added {
+    background: rgba(40, 167, 69, 0.15);
+    color: #28a745;
+}
+
+.legend-removed {
+    background: rgba(220, 53, 69, 0.15);
+    color: #dc3545;
+}
+
+.legend-changed {
+    background: rgba(255, 152, 0, 0.15);
+    color: #e67e00;
+}
+
+.legend-layout {
+    background: rgba(0, 123, 255, 0.15);
+    color: #007bff;
+}
+
+/* Change list */
+.no-changes {
+    color: var(--vscode-descriptionForeground, #666);
+    font-style: italic;
+    text-align: center;
+    margin-top: 24px;
+}
+
+.change-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    padding: 5px 6px;
+    border-radius: 4px;
+    margin-bottom: 1px;
+    transition: background 0.1s;
+}
+
+.change-item:hover {
+    background: var(--vscode-list-hoverBackground, rgba(0, 0, 0, 0.04));
+}
+
+.change-item.hidden-type {
+    display: none;
+}
+
+.change-indicator {
+    width: 8px;
+    height: 8px;
+    min-width: 8px;
+    border-radius: 50%;
+    margin-top: 4px;
+    cursor: pointer;
+    transition:
+        background 0.15s,
+        border 0.15s,
+        transform 0.1s;
+    box-sizing: border-box;
+}
+
+.change-indicator:hover {
+    transform: scale(1.3);
+}
+
+.change-added .change-indicator {
+    background: #28a745;
+}
+
+.change-removed .change-indicator {
+    background: #dc3545;
+}
+
+.change-changed .change-indicator {
+    background: #e67e00;
+}
+
+.change-layout-changed .change-indicator {
+    background: #007bff;
+}
+
+/* Individually disabled items: hollow bullet with type color */
+.change-item.item-disabled.change-added .change-indicator {
+    background: transparent !important;
+    border: 2px solid #28a745;
+}
+
+.change-item.item-disabled.change-removed .change-indicator {
+    background: transparent !important;
+    border: 2px solid #dc3545;
+}
+
+.change-item.item-disabled.change-changed .change-indicator {
+    background: transparent !important;
+    border: 2px solid #e67e00;
+}
+
+.change-item.item-disabled.change-layout-changed .change-indicator {
+    background: transparent !important;
+    border: 2px solid #007bff;
+}
+
+.change-item.item-disabled .change-text {
+    opacity: 0.5;
+    text-decoration: line-through;
+}
+
+/* Keyboard focus indicator */
+.change-item:focus {
+    outline: 1px solid var(--vscode-focusBorder, #0078d4);
+    outline-offset: -1px;
+    background: var(--vscode-list-focusBackground, rgba(0, 120, 215, 0.06));
+}
+
+.change-text {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+}
+
+.change-label {
+    font-size: 12px;
+    word-break: break-word;
+}
+
+.change-details {
+    font-size: 11px;
+    color: var(--vscode-descriptionForeground, #666);
+    margin-top: 2px;
+    word-break: break-word;
+}
+
+/* Minimap — match modeler font size (12px) */
+.djs-minimap .toggle {
+    font-size: 12px;
+}
+
+/* BPMN element markers (applied via canvas.addMarker) */
+/* Shapes get a solid fill tint. Connections (open paths) get a stroke color instead.
+   We do NOT style .djs-outline because that creates colored rings that look like extra dots. */
+
+/* Hide elements when their change type is toggled off (fallback) */
+.djs-element.diff-added-hidden,
+.djs-element.diff-changed-hidden,
+.djs-element.diff-layout-changed-hidden {
+    opacity: 0;
+    pointer-events: none;
+}
+
+/* --- Added --- */
+.diff-added:not(.djs-connection) :is(.djs-visual) > :first-child {
+    fill: #d4edda !important;
+    stroke: #28a745 !important;
+}
+
+.diff-added.djs-connection .djs-visual > path {
+    stroke: #28a745 !important;
+    stroke-width: 3px !important;
+    fill: none !important;
+}
+
+.diff-added .djs-visual text {
+    fill: #28a745 !important;
+}
+
+/* --- Removed (ghost shapes are SVG rects, not bpmn-js elements) --- */
+.diff-removed:not(.djs-connection) :is(.djs-visual) > :first-child {
+    fill: #f8d7da !important;
+    stroke: #dc3545 !important;
+}
+
+.diff-removed.djs-connection .djs-visual > path {
+    stroke: #dc3545 !important;
+    stroke-width: 3px !important;
+    fill: none !important;
+}
+
+.diff-removed .djs-visual text {
+    fill: #dc3545 !important;
+}
+
+/* --- Changed --- */
+.diff-changed:not(.djs-connection) :is(.djs-visual) > :first-child {
+    fill: #ffeacc !important;
+    stroke: #e67e00 !important;
+}
+
+.diff-changed.djs-connection .djs-visual > path {
+    stroke: #e67e00 !important;
+    stroke-width: 3px !important;
+    fill: none !important;
+}
+
+.diff-changed .djs-visual text {
+    fill: #e67e00 !important;
+}
+
+/* --- Layout changed (position/size moved) --- */
+.diff-layout-changed:not(.djs-connection) :is(.djs-visual) > :first-child {
+    fill: #cce5ff !important;
+    stroke: #007bff !important;
+}
+
+.diff-layout-changed.djs-connection .djs-visual > path {
+    stroke: #007bff !important;
+    stroke-width: 3px !important;
+    stroke-dasharray: 6 3 !important;
+    fill: none !important;
+}
+
+.diff-layout-changed .djs-visual text {
+    fill: #007bff !important;
+}
+
+/* --- Click-to-highlight pulse animation --- */
+@keyframes diff-pulse {
+    0%,
+    100% {
+        stroke-opacity: 0;
+        stroke-width: 0;
+    }
+    50% {
+        stroke-opacity: 0.8;
+        stroke-width: 6px;
+    }
+}
+
+.djs-element.diff-highlight .djs-outline {
+    visibility: visible !important;
+    stroke: var(--vscode-focusBorder, #0078d4) !important;
+    fill: none !important;
+    animation: diff-pulse 0.5s ease-in-out 3;
+}
+
+/* --- Selected change item in sidebar --- */
+.change-item.selected {
+    background: var(--vscode-list-activeSelectionBackground, rgba(0, 120, 215, 0.12));
+    outline: 1px solid var(--vscode-focusBorder, rgba(0, 120, 215, 0.4));
+}
+
+/* --- Ghost edges for layout-changed flows (old path) --- */
+.diff-ghost-group polyline.ghost-layout-edge {
+    stroke: #007bff;
+    stroke-width: 2px;
+    stroke-dasharray: 4 4;
+    fill: none;
+    opacity: 0.4;
+}
+
+/* --- Attribute-change HUD overlay --- */
+#diff-hud {
+    display: none;
+    position: absolute;
+    top: 16px;
+    right: 16px;
+    z-index: 100;
+    max-width: 480px;
+    max-height: calc(100% - 32px);
+    overflow-y: auto;
+    background: rgba(30, 30, 30, 0.88);
+    color: #e8e8e8;
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    border-radius: 6px;
+    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.45);
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+    font-size: 12px;
+    pointer-events: all;
+}
+
+#diff-hud.visible {
+    display: block;
+}
+
+.hud-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 12px 8px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+    gap: 8px;
+}
+
+.hud-title {
+    font-weight: 600;
+    font-size: 12px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    color: #e8e8e8;
+}
+
+.hud-close {
+    flex-shrink: 0;
+    background: none;
+    border: none;
+    color: #aaa;
+    cursor: pointer;
+    font-size: 16px;
+    line-height: 1;
+    padding: 0 2px;
+    border-radius: 3px;
+    transition:
+        color 0.15s,
+        background 0.15s;
+}
+
+.hud-close:hover {
+    color: #fff;
+    background: rgba(255, 255, 255, 0.1);
+}
+
+.hud-table-wrap {
+    padding: 8px 12px 12px;
+}
+
+.hud-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 11px;
+}
+
+.hud-table th {
+    text-align: left;
+    font-weight: 600;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: #aaa;
+    padding: 4px 8px 4px 0;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    white-space: nowrap;
+}
+
+.hud-table td {
+    padding: 5px 8px 5px 0;
+    vertical-align: top;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    word-break: break-word;
+    max-width: 160px;
+}
+
+.hud-table td:first-child {
+    color: #ccc;
+    font-weight: 500;
+    white-space: nowrap;
+    padding-right: 12px;
+}
+
+.hud-val-before {
+    color: #f08080;
+    font-family: var(--vscode-editor-font-family, monospace);
+}
+
+.hud-val-after {
+    color: #90ee90;
+    font-family: var(--vscode-editor-font-family, monospace);
+}
+
+.hud-val-none {
+    opacity: 0.45;
+    font-style: italic;
+}
+
+/* Type label badge for BPMN object values (e.g. "FormalExpression") */
+.hud-val-type {
+    display: inline-block;
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    opacity: 0.65;
+    margin-bottom: 2px;
+}
+
+/* Key name in object property list */
+.hud-obj-key {
+    opacity: 0.7;
+    font-style: italic;
+}
+
+/* Code / script block inside HUD cells */
+.hud-code {
+    margin: 3px 0 0;
+    padding: 4px 6px;
+    background: rgba(0, 0, 0, 0.3);
+    border-radius: 3px;
+    font-family: var(--vscode-editor-font-family, monospace);
+    font-size: 10px;
+    white-space: pre-wrap;
+    word-break: break-word;
+    max-height: 120px;
+    overflow-y: auto;
+}
+
+/* --- HUD header actions (toggle + close buttons) --- */
+.hud-header-actions {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    flex-shrink: 0;
+}
+
+/* --- Extension element per-child diff list --- */
+.ext-diff-list {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.ext-child {
+    display: flex;
+    align-items: baseline;
+    gap: 4px;
+    font-size: 11px;
+    line-height: 1.4;
+    padding: 2px 0;
+}
+
+.ext-indicator {
+    font-weight: 700;
+    font-size: 12px;
+    width: 10px;
+    flex-shrink: 0;
+    text-align: center;
+}
+
+.ext-type {
+    font-weight: 600;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    opacity: 0.75;
+    white-space: nowrap;
+}
+
+.ext-child.ext-added .ext-indicator {
+    color: #90ee90;
+}
+
+.ext-child.ext-removed .ext-indicator {
+    color: #f08080;
+}
+
+.ext-child.ext-modified .ext-indicator {
+    color: #ffd700;
+}
+
+.ext-child.ext-unchanged {
+    opacity: 0.45;
+}
+
+.ext-child.ext-added-placeholder,
+.ext-child.ext-removed-placeholder {
+    opacity: 0.4;
+}

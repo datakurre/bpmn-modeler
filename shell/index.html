@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <link rel="stylesheet" href="./src/shell.css" />
+        <title>Operaton Modeler</title>
+    </head>
+    <body>
+        <div class="shell-bar" id="shell-bar" data-tauri-drag-region>
+            <div class="shell-tabs" id="shell-tabs" role="tablist" data-tauri-drag-region></div>
+            <div class="shell-spacer" data-tauri-drag-region></div>
+            <div class="shell-actions">
+                <button type="button" id="shell-open" title="Open file">Open</button>
+                <div class="shell-new">
+                    <button
+                        type="button"
+                        id="shell-new-toggle"
+                        title="New file"
+                        aria-haspopup="true"
+                        aria-expanded="false"
+                    >
+                        New&nbsp;&#9662;
+                    </button>
+                    <div class="shell-new-menu" id="shell-new-menu" hidden>
+                        <button type="button" data-kind="bpmn">BPMN diagram</button>
+                        <button type="button" data-kind="dmn">DMN diagram</button>
+                        <button type="button" data-kind="form">Form</button>
+                    </div>
+                </div>
+            </div>
+            <div class="shell-window-controls">
+                <button type="button" id="shell-minimize" aria-label="Minimize">&#8211;</button>
+                <button type="button" id="shell-maximize" aria-label="Maximize">&#9633;</button>
+                <button type="button" id="shell-quit" class="shell-quit" aria-label="Close">&#215;</button>
+            </div>
+        </div>
+        <main class="shell-empty" id="shell-empty">
+            <h1>Operaton Modeler</h1>
+            <p>Open a BPMN, DMN, or Form file to get started.</p>
+            <div class="shell-empty-actions">
+                <button type="button" id="shell-empty-open">Open file&hellip;</button>
+                <button type="button" data-kind="bpmn">New BPMN diagram</button>
+                <button type="button" data-kind="dmn">New DMN diagram</button>
+                <button type="button" data-kind="form">New Form</button>
+            </div>
+        </main>
+        <script type="module" src="./src/shell-main.ts"></script>
+    </body>
+</html>

@@ -1,0 +1,8 @@
+{
+    "name": "operaton-bpmn-editor-desktop",
+    "private": true,
+    "scripts": {
+        "dev": "tauri dev",
+        "build": "tauri build"
+    }
+}

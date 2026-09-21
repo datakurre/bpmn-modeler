@@ -1,0 +1,180 @@
+{
+  description = "Operaton Modeler: unified BPMN, DMN, and Form editor desktop app";
+
+  inputs.nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
+  inputs.bpmn-auto-layout = {
+    url = "github:datakurre/bpmn-auto-layout";
+    inputs.nixpkgs.follows = "nixpkgs";
+  };
+  inputs.bpmnRepo = {
+    url = "git+file:./vscode-operaton-bpmn-js-modeler";
+    flake = false;
+  };
+  inputs.dmnRepo = {
+    url = "git+file:./vscode-operaton-dmn-js-modeler";
+    flake = false;
+  };
+  inputs.formRepo = {
+    url = "git+file:./vscode-operaton-form-js-modeler";
+    flake = false;
+  };
+
+  outputs =
+    {
+      self,
+      nixpkgs,
+      bpmn-auto-layout,
+      bpmnRepo,
+      dmnRepo,
+      formRepo,
+    }:
+    let
+      systems = [
+        "x86_64-linux"
+        "aarch64-linux"
+      ];
+      forAllSystems = f: nixpkgs.lib.genAttrs systems (system: f nixpkgs.legacyPackages.${system});
+    in
+    {
+      devShells = forAllSystems (pkgs: {
+        default = pkgs.mkShell {
+          packages = with pkgs; [
+            nodejs
+            jq
+            cargo
+            rustc
+            rustfmt
+            pkg-config
+            gtk3
+            webkitgtk_4_1
+            maven
+            sbt-with-scala-native
+            temurin-bin-21
+            gnumake
+            curl
+          ];
+
+          shellHook = ''
+            export WEBKIT_DISABLE_COMPOSITING_MODE="''${WEBKIT_DISABLE_COMPOSITING_MODE:-1}"
+          '';
+        };
+      });
+
+      packages = forAllSystems (pkgs: {
+        vendorElementTemplates = pkgs.fetchurl {
+          url = "https://registry.npmjs.org/bpmn-js-element-templates/-/bpmn-js-element-templates-2.24.0.tgz";
+          hash = "sha256-zt324hyQ0HQm3DxThQC/2FbO0ZU/tbD/ZXtSoeL/NOo=";
+        };
+
+        vendorElementTemplatesValidator = pkgs.fetchurl {
+          url = "https://registry.npmjs.org/@bpmn-io/element-templates-validator/-/element-templates-validator-2.21.0.tgz";
+          hash = "sha256-F3f5G8kFwdQ9qBITlXBrfhx9P5R/CETxlVJus6LT80M=";
+        };
+
+        frontend = pkgs.buildNpmPackage {
+          pname = "operaton-modeler-frontend";
+          version = "0.1.0";
+          src = ./.;
+          npmDepsHash = "sha256-3gc3MfIvMj6+tCbLC0WrSEH8M+prEZD3mfDhxUeVqzU=";
+          makeCacheWritable = true;
+          npmInstallFlags = [ "--ignore-scripts" ];
+          npmRebuildFlags = [ "--ignore-scripts" ];
+          npmBuildScript = "build:webview:desktop";
+
+          preBuild = ''
+            mkdir -p vendor/bpmn-js-modeler vendor/dmn-js-modeler vendor/form-js-modeler
+            cp -r ${bpmnRepo}/. vendor/bpmn-js-modeler/
+            cp -r ${dmnRepo}/. vendor/dmn-js-modeler/
+            cp -r ${formRepo}/. vendor/form-js-modeler/
+            chmod -R u+w vendor
+
+            mkdir -p vendor/bpmn-js-modeler/vendor/operaton-element-templates \
+                     vendor/bpmn-js-modeler/vendor/operaton-element-templates-validator
+            tar -xzf ${self.packages.${pkgs.stdenv.hostPlatform.system}.vendorElementTemplates} \
+              --strip-components=1 -C vendor/bpmn-js-modeler/vendor/operaton-element-templates
+            tar -xzf ${self.packages.${pkgs.stdenv.hostPlatform.system}.vendorElementTemplatesValidator} \
+              --strip-components=1 -C vendor/bpmn-js-modeler/vendor/operaton-element-templates-validator
+            cp -r ${bpmn-auto-layout}/. vendor/bpmn-auto-layout/
+            chmod -R u+w vendor/bpmn-auto-layout
+
+            mkdir -p vendor/bpmn-js-modeler/vendor/operaton-element-templates/node_modules
+            if [ -d node_modules/bpmn-js-element-templates/node_modules/uuid ]; then
+              cp -r node_modules/bpmn-js-element-templates/node_modules/uuid \
+                vendor/bpmn-js-modeler/vendor/operaton-element-templates/node_modules/
+            elif [ -d node_modules/uuid ]; then
+              cp -r node_modules/uuid \
+                vendor/bpmn-js-modeler/vendor/operaton-element-templates/node_modules/
+            fi
+
+            cd vendor/bpmn-auto-layout
+            ../../node_modules/.bin/esbuild src/index.ts \
+              --bundle --format=esm --platform=node \
+              --external:bpmn-moddle --external:bpmn-js \
+              --outfile=dist/index.js --loader:.json=json
+            cd -
+          '';
+
+          installPhase = ''
+            runHook preInstall
+            mkdir -p "$out"
+            cp -r dist/desktop/. "$out/"
+            runHook postInstall
+          '';
+        };
+
+        default = pkgs.rustPlatform.buildRustPackage {
+          pname = "operaton-modeler";
+          version = "0.1.0";
+          src = ./.;
+          cargoRoot = "desktop/src-tauri";
+          buildAndTestSubdir = "desktop/src-tauri";
+          cargoLock = {
+            lockFile = ./desktop/src-tauri/Cargo.lock;
+          };
+
+          nativeBuildInputs = with pkgs; [
+            pkg-config
+            wrapGAppsHook4
+          ];
+          buildInputs = with pkgs; [
+            glib
+            gsettings-desktop-schemas
+            gtk3
+            libsoup_3
+            openssl
+            webkitgtk_4_1
+          ];
+
+          preBuild = ''
+            mkdir -p dist
+            rm -rf dist/desktop
+            cp -r ${self.packages.${pkgs.stdenv.hostPlatform.system}.frontend} dist/desktop
+          '';
+
+          installPhase = ''
+            runHook preInstall
+            binary="$(find . -type f \( -path '*/target/*/release/operaton-modeler' -o -path '*/target/release/operaton-modeler' \) -print -quit)"
+            test -n "$binary"
+            install -Dm755 "$binary" "$out/bin/operaton-modeler"
+            runHook postInstall
+          '';
+
+          meta.mainProgram = "operaton-modeler";
+        };
+      });
+
+      apps = forAllSystems (pkgs: {
+        default = {
+          type = "app";
+          program = "${self.packages.${pkgs.stdenv.hostPlatform.system}.default}/bin/operaton-modeler";
+          meta.description = "Launch the Operaton Modeler desktop app";
+        };
+      });
+
+      checks = forAllSystems (pkgs: {
+        flake-evaluation = self.packages.${pkgs.stdenv.hostPlatform.system}.default;
+      });
+
+      formatter = forAllSystems (pkgs: pkgs.nixfmt-tree);
+    };
+}

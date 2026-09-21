@@ -1,0 +1,22 @@
+{
+    "name": "OperatonTemplateExtension",
+    "prefix": "camunda",
+    "uri": "http://camunda.org/schema/1.0/bpmn",
+    "xml": {
+        "tagAlias": "lowerCase"
+    },
+    "types": [
+        {
+            "name": "TemplateIconSupported",
+            "isAbstract": true,
+            "extends": ["bpmn:Collaboration", "bpmn:Process", "bpmn:FlowElement"],
+            "properties": [
+                {
+                    "name": "modelerTemplateIcon",
+                    "isAttr": true,
+                    "type": "String"
+                }
+            ]
+        }
+    ]
+}

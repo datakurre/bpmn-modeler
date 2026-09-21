@@ -1,0 +1,63 @@
+{
+  "name": "operaton-modeler",
+  "version": "0.1.0",
+  "description": "Unified desktop modeler for BPMN, DMN, and Form definitions",
+  "private": true,
+  "license": "Apache-2.0",
+  "scripts": {
+    "setup:vendor": "bash scripts/setup-vendor.sh",
+    "build:shell": "vite build --config shell/vite.config.mts",
+    "build:bpmn": "vite build --config webview-desktop/bpmn/vite.config.mts",
+    "build:dmn": "vite build --config webview-desktop/dmn/vite.config.mts",
+    "build:form": "vite build --config webview-desktop/form/vite.config.mts",
+    "build:webview:desktop": "npm run build:shell && npm run build:bpmn && npm run build:dmn && npm run build:form",
+    "dev:webview:desktop": "vite --config vite.dev.config.mts",
+    "desktop:dev": "cd desktop/src-tauri && npx tauri dev",
+    "desktop:build": "cd desktop/src-tauri && npx tauri build",
+    "desktop:build:binary": "cd desktop/src-tauri && npx tauri build --no-bundle"
+  },
+  "overrides": {
+    "undici": "^7.24.4"
+  },
+  "dependencies": {
+    "@bpmn-io/element-template-icon-renderer": "^1.0.0",
+    "@tauri-apps/api": "^2.5.0",
+    "@tauri-apps/plugin-dialog": "^2.2.0",
+    "bpmn-moddle": "^10.0.0",
+    "camunda-bpmn-moddle": "^7.0.1"
+  },
+  "devDependencies": {
+    "@bpmn-io/element-template-chooser": "^2.1.0",
+    "@bpmn-io/form-js": "^1.26.0",
+    "@bpmn-io/form-js-editor": "^1.26.0",
+    "@bpmn-io/form-js-playground": "^1.26.0",
+    "@bpmn-io/properties-panel": "^3.0.0",
+    "@codemirror/lang-json": "^6.0.2",
+    "@tauri-apps/cli": "^2.5.0",
+    "@types/node": "^22.13.4",
+    "bpmn-js-bpmnlint": "^0.24.0",
+    "bpmn-js-create-append-anything": "^1.2.0",
+    "bpmn-js-differ": "^3.2.0",
+    "bpmn-js-embedded-comments": "^0.7.0",
+    "bpmn-js-properties-panel": "^5.31.1",
+    "bpmn-js-token-simulation": "^0.39.1",
+    "bpmnlint": "^11.12.0",
+    "bpmnlint-loader": "^0.1.6",
+    "camunda-bpmn-js": "^5.4.2",
+    "camunda-dmn-moddle": "^1.3.1",
+    "camunda-modeler-robot-plugin": "github:datakurre/camunda-modeler-robot-plugin",
+    "camunda-transaction-boundaries": "^1.1.2",
+    "codemirror": "^6.0.2",
+    "diagram-js-minimap": "^5.3.0",
+    "dmn-js": "^17.6.0",
+    "dmn-js-properties-panel": "^3.10.0",
+    "dmn-moddle": "^12.0.1",
+    "esbuild": "^0.27.3",
+    "feelin": "^6.2.0",
+    "min-dash": "^5.0.0",
+    "split.js": "^1.6.5",
+    "typescript": "^5.7.3",
+    "vite": "^7.3.1",
+    "vite-plugin-static-copy": "^3.2.0"
+  }
+}

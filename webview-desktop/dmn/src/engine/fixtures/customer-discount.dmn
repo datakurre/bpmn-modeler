@@ -1,0 +1,78 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Test fixture: customer-discount.dmn
+  Mirrors the structure of TODO.dmn (empty inputExpression <text> elements,
+  label used as the variable name) but with distinct column names and values
+  so it does not rely on the TODO file and can be freely modified in tests.
+
+  Inputs:
+    customer  (string)  — the customer tier, e.g. "gold", "silver", "bronze"
+    quantity  (integer) — number of units ordered
+
+  Output:
+    discount  (integer) — percentage discount to apply
+
+  Rules:
+    gold   + quantity >= 10 units  → 20 %
+    gold   + quantity <  10 units  → 10 %
+    silver + any quantity          → 5  %
+    (no match)                     → null
+-->
+<definitions xmlns="https://www.omg.org/spec/DMN/20191111/MODEL/"
+             xmlns:dmndi="https://www.omg.org/spec/DMN/20191111/DMNDI/"
+             xmlns:dc="http://www.omg.org/spec/DMN/20180521/DC/"
+             id="Definitions_CustomerDiscount"
+             name="Customer Discount"
+             namespace="http://operaton.org/schema/1.0/dmn">
+
+  <decision id="Decision_CustomerDiscount" name="Customer Discount">
+    <decisionTable id="DecisionTable_CustomerDiscount" hitPolicy="FIRST">
+
+      <!-- Empty <text> — label is used as the variable name by the engine -->
+      <input id="Input_Customer" label="customer">
+        <inputExpression id="InputExpression_Customer" typeRef="string">
+          <text></text>
+        </inputExpression>
+      </input>
+
+      <input id="Input_Quantity" label="quantity">
+        <inputExpression id="InputExpression_Quantity" typeRef="integer">
+          <text></text>
+        </inputExpression>
+      </input>
+
+      <output id="Output_Discount" name="discount" typeRef="integer" />
+
+      <!-- Rule 1: gold + bulk order → 20 % -->
+      <rule id="Rule_GoldBulk">
+        <inputEntry id="UnaryTest_GoldBulk_Customer"><text>"gold"</text></inputEntry>
+        <inputEntry id="UnaryTest_GoldBulk_Quantity"><text>>= 10</text></inputEntry>
+        <outputEntry id="Output_GoldBulk"><text>20</text></outputEntry>
+      </rule>
+
+      <!-- Rule 2: gold + small order → 10 % -->
+      <rule id="Rule_GoldSmall">
+        <inputEntry id="UnaryTest_GoldSmall_Customer"><text>"gold"</text></inputEntry>
+        <inputEntry id="UnaryTest_GoldSmall_Quantity"><text>-</text></inputEntry>
+        <outputEntry id="Output_GoldSmall"><text>10</text></outputEntry>
+      </rule>
+
+      <!-- Rule 3: silver → 5 % -->
+      <rule id="Rule_Silver">
+        <inputEntry id="UnaryTest_Silver_Customer"><text>"silver"</text></inputEntry>
+        <inputEntry id="UnaryTest_Silver_Quantity"><text>-</text></inputEntry>
+        <outputEntry id="Output_Silver"><text>5</text></outputEntry>
+      </rule>
+
+    </decisionTable>
+  </decision>
+
+  <dmndi:DMNDI>
+    <dmndi:DMNDiagram>
+      <dmndi:DMNShape dmnElementRef="Decision_CustomerDiscount">
+        <dc:Bounds height="80" width="180" x="160" y="100" />
+      </dmndi:DMNShape>
+    </dmndi:DMNDiagram>
+  </dmndi:DMNDI>
+
+</definitions>

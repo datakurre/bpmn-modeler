@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>Operaton DMN Editor</title>
+    </head>
+    <body class="desktop">
+        <div class="content with-diagram" id="js-drop-zone">
+            <div id="js-split">
+                <div class="canvas" id="js-canvas"></div>
+                <div class="properties-panel-parent" id="js-properties-panel"></div>
+            </div>
+        </div>
+        <div class="desktop-status" id="desktop-status" role="status" aria-live="polite">
+            <div class="desktop-status-state">
+                <span class="desktop-status-dot" aria-hidden="true"></span>
+                <span class="desktop-status-label"></span>
+            </div>
+            <div class="desktop-status-filename"></div>
+        </div>
+        <aside
+            class="desktop-shortcuts-help"
+            id="desktop-shortcuts-help"
+            aria-label="Keyboard shortcuts"
+            hidden
+        >
+            <h2>Keyboard shortcuts</h2>
+            <dl>
+                <div>
+                    <dt>Ctrl/Cmd + S</dt>
+                    <dd>Save diagram</dd>
+                </div>
+                <div>
+                    <dt>Ctrl/Cmd + Tab</dt>
+                    <dd>Next tab</dd>
+                </div>
+                <div>
+                    <dt>Ctrl/Cmd + Shift + Tab</dt>
+                    <dd>Previous tab</dd>
+                </div>
+                <div>
+                    <dt>Ctrl/Cmd + Q</dt>
+                    <dd>Quit editor</dd>
+                </div>
+            </dl>
+        </aside>
+        <script type="module" src="./src/desktop-main.ts"></script>
+    </body>
+</html>

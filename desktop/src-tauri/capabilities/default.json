@@ -1,0 +1,11 @@
+{
+    "$schema": "../gen/schemas/desktop-schema.json",
+    "identifier": "default",
+    "description": "Default permissions for Operaton Modeler",
+    "windows": ["*"],
+    "webviews": ["*"],
+    "permissions": [
+        "core:default",
+        "dialog:default"
+    ]
+}

@@ -1,0 +1,22 @@
+{
+    "compilerOptions": {
+        "target": "ESNext",
+        "module": "ESNext",
+        "lib": ["ESNext", "DOM"],
+        "moduleResolution": "Node",
+        "types": ["vite/client"],
+        "esModuleInterop": true,
+        "isolatedModules": true,
+        "noEmit": true,
+        "noUnusedLocals": true,
+        "noUnusedParameters": true,
+        "noImplicitReturns": true,
+        "resolveJsonModule": true,
+        "skipLibCheck": true,
+        "strict": true,
+        "useDefineForClassFields": true,
+        "baseUrl": ".",
+        "paths": {}
+    },
+    "include": ["src/**/*.ts"]
+}

@@ -1,0 +1,155 @@
+{
+  "nodes": {
+    "bpmn-auto-layout": {
+      "inputs": {
+        "bpmn-to-image": "bpmn-to-image",
+        "nixpkgs": [
+          "nixpkgs"
+        ]
+      },
+      "locked": {
+        "lastModified": 1789884794,
+        "narHash": "sha256-aZ9hSvygAVAWdG5FwvXjeaktvG35B5n2k/YPeR1Uw4Q=",
+        "owner": "datakurre",
+        "repo": "bpmn-auto-layout",
+        "rev": "a8881e585339c1bdbff150e542db45f5aab32c78",
+        "type": "github"
+      },
+      "original": {
+        "owner": "datakurre",
+        "repo": "bpmn-auto-layout",
+        "type": "github"
+      }
+    },
+    "bpmn-to-image": {
+      "inputs": {
+        "flake-utils": "flake-utils",
+        "nixpkgs": [
+          "bpmn-auto-layout",
+          "nixpkgs"
+        ]
+      },
+      "locked": {
+        "lastModified": 1789222056,
+        "narHash": "sha256-NbuGqA8zwqE1KPSA6N/cYA1BAqBVNu6gWPhuiO1rtKI=",
+        "owner": "datakurre",
+        "repo": "bpmn-to-image",
+        "rev": "6ea890508118ab38f40bcea44a67aa70206ab1a2",
+        "type": "github"
+      },
+      "original": {
+        "owner": "datakurre",
+        "repo": "bpmn-to-image",
+        "type": "github"
+      }
+    },
+    "bpmnRepo": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1789885019,
+        "narHash": "sha256-uliAASRxT0WrFYA4ERNjs2jdUyAckIC1am3/Bke/xl4=",
+        "ref": "refs/heads/main",
+        "rev": "9d6a81b4ffb444499b81bd4721d2f2d03482c023",
+        "revCount": 321,
+        "type": "git",
+        "url": "file:./vscode-operaton-bpmn-js-modeler"
+      },
+      "original": {
+        "type": "git",
+        "url": "file:./vscode-operaton-bpmn-js-modeler"
+      }
+    },
+    "dmnRepo": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1774018741,
+        "narHash": "sha256-ROgpVWe7ZSGUgg6Wo4ccWZ54YdZTpACaoqQdYFQYcU4=",
+        "ref": "refs/heads/main",
+        "rev": "f281d3404ef09057b36c02986b49a49ed7b3c422",
+        "revCount": 295,
+        "type": "git",
+        "url": "file:./vscode-operaton-dmn-js-modeler"
+      },
+      "original": {
+        "type": "git",
+        "url": "file:./vscode-operaton-dmn-js-modeler"
+      }
+    },
+    "flake-utils": {
+      "inputs": {
+        "systems": "systems"
+      },
+      "locked": {
+        "lastModified": 1731533236,
+        "narHash": "sha256-l0KFg5HjrsfsO/JpG+r7fRrqm12kzFHyUHqHCVpMMbI=",
+        "owner": "numtide",
+        "repo": "flake-utils",
+        "rev": "11707dc2f618dd54ca8739b309ec4fc024de578b",
+        "type": "github"
+      },
+      "original": {
+        "owner": "numtide",
+        "repo": "flake-utils",
+        "type": "github"
+      }
+    },
+    "formRepo": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1788891942,
+        "narHash": "sha256-72nYOXi/dkqn+NGu3Arths9DTlxBBqy3OkW7has8nWI=",
+        "ref": "refs/heads/main",
+        "rev": "f05d9a67bcd4ba99e54de40b12b457005cacdfd5",
+        "revCount": 51,
+        "type": "git",
+        "url": "file:./vscode-operaton-form-js-modeler"
+      },
+      "original": {
+        "type": "git",
+        "url": "file:./vscode-operaton-form-js-modeler"
+      }
+    },
+    "nixpkgs": {
+      "locked": {
+        "lastModified": 1789724158,
+        "narHash": "sha256-nlKgrm0dsVhOSopKheVBCcOpiIticufPPVLdVOI0euA=",
+        "owner": "NixOS",
+        "repo": "nixpkgs",
+        "rev": "0a3468a402c449992505b6a9fc5b06580141b750",
+        "type": "github"
+      },
+      "original": {
+        "owner": "NixOS",
+        "ref": "nixpkgs-unstable",
+        "repo": "nixpkgs",
+        "type": "github"
+      }
+    },
+    "root": {
+      "inputs": {
+        "bpmn-auto-layout": "bpmn-auto-layout",
+        "bpmnRepo": "bpmnRepo",
+        "dmnRepo": "dmnRepo",
+        "formRepo": "formRepo",
+        "nixpkgs": "nixpkgs"
+      }
+    },
+    "systems": {
+      "locked": {
+        "lastModified": 1681028828,
+        "narHash": "sha256-Vy1rq5AaRuLzOxct8nz4T6wlgyUR7zLU309k9mBC768=",
+        "owner": "nix-systems",
+        "repo": "default",
+        "rev": "da67096a3b9bf56a91d16901293e51ba5b49a27e",
+        "type": "github"
+      },
+      "original": {
+        "owner": "nix-systems",
+        "repo": "default",
+        "type": "github"
+      }
+    }
+  },
+  "root": "root",
+  "version": 7
+}

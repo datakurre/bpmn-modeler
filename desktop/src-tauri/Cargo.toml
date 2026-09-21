@@ -1,0 +1,27 @@
+[package]
+name = "operaton-modeler"
+version = "0.1.0"
+description = "Operaton Modeler desktop app for BPMN, DMN, and Form definitions"
+authors = ["vasara-bpm"]
+license = "Apache-2.0"
+edition = "2021"
+
+[lib]
+name = "operaton_modeler_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tauri = { version = "2", features = ["unstable"] }
+tauri-plugin-dialog = "2"
+
+[target.'cfg(any(target_os = "linux", target_os = "dragonfly", target_os = "freebsd", target_os = "netbsd", target_os = "openbsd"))'.dependencies]
+gtk = "0.18"
+
+[features]
+default = ["custom-protocol"]
+custom-protocol = ["tauri/custom-protocol"]

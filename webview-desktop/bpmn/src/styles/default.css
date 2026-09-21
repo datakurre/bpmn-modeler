@@ -1,0 +1,425 @@
+* {
+    box-sizing: border-box;
+}
+
+body,
+html {
+    color: #1f1f1f;
+    background-color: #fff;
+    font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+    font-size: 12px;
+    height: 100%;
+    max-height: 100%;
+    width: 100%;
+    overflow: hidden;
+    padding: 0;
+    margin: 0;
+}
+
+#js-split {
+    height: 100%;
+    width: 100%;
+    display: flex;
+    flex-direction: row;
+}
+
+.gutter {
+    background-color: #eee;
+    background-repeat: no-repeat;
+    background-position: 50%;
+}
+
+.gutter.gutter-horizontal {
+    background-image: url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAUAAAAeCAYAAADkftS9AAAAIklEQVQoU2M4c+bMfxAGAgYYmwGrIIiDjrELjpo5aiZeMwF+yNnOs5KSvgAAAABJRU5ErkJggg==");
+    cursor: col-resize;
+}
+
+a:link {
+    text-decoration: none;
+}
+
+.content {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    display: flex;
+}
+
+.content > .message {
+    width: 100%;
+    height: 100%;
+    text-align: center;
+    display: table;
+    font-size: 16px;
+    color: #111;
+}
+
+.content > .message .note {
+    vertical-align: middle;
+    text-align: center;
+    display: table-cell;
+}
+
+.content > .message.error .details {
+    max-width: 500px;
+    font-size: 12px;
+    margin: 20px auto;
+    text-align: left;
+    color: #bd2828;
+}
+
+.content > .message.error pre {
+    border: solid 1px #bd2828;
+    background: #fefafa;
+    padding: 10px;
+    color: #bd2828;
+}
+
+.content:not(.with-error) .error,
+.content.with-error .intro,
+.content.with-diagram .intro {
+    display: none;
+}
+
+.content .canvas {
+    width: 100%;
+    height: 100%;
+    position: relative;
+}
+
+.content .canvas,
+.content .properties-panel-parent {
+    display: none;
+}
+
+.content.with-diagram .canvas,
+.content.with-diagram .properties-panel-parent {
+    display: block;
+}
+
+.properties-panel-parent {
+    border-left: 1px solid #ccc;
+    overflow: auto;
+}
+
+.properties-panel-parent:empty {
+    display: none;
+}
+
+.properties-panel-parent > .djs-properties-panel {
+    padding-bottom: 70px;
+    min-height: 100%;
+}
+
+/* The desktop shell starts as a diagram-only editor and reveals the panel on demand. */
+body.desktop .content {
+    display: block;
+    height: 100vh;
+    min-height: 0;
+    width: 100vw;
+    max-width: 100vw;
+    overflow: hidden;
+}
+
+body.desktop .content .canvas {
+    position: absolute;
+    inset: 0;
+    width: auto;
+    height: auto;
+}
+
+body.desktop #js-canvas {
+    width: auto;
+    height: 100%;
+    contain: strict;
+    overflow: hidden;
+}
+
+body.desktop #js-canvas .djs-container,
+body.desktop #js-canvas .djs-container > svg {
+    width: 100%;
+    height: 100%;
+    max-width: 100%;
+    max-height: 100%;
+}
+
+body.desktop .content.with-diagram .properties-panel-parent {
+    display: none;
+    position: absolute;
+    inset: 0 0 0 auto;
+    width: 340px;
+    height: 100%;
+    z-index: 2;
+}
+
+body.desktop.properties-visible .content.with-diagram .properties-panel-parent {
+    display: block;
+}
+
+body.desktop .djs-minimap {
+    display: none !important;
+}
+
+body.desktop .desktop-status {
+    position: fixed;
+    left: 10px;
+    bottom: 8px;
+    z-index: 10;
+    color: #666;
+    background: rgb(255 255 255 / 85%);
+    padding: 4px 8px;
+    pointer-events: none;
+    line-height: 1.35;
+}
+
+body.desktop .desktop-status-state {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-weight: 600;
+}
+
+body.desktop .desktop-status-dot {
+    width: 7px;
+    height: 7px;
+    flex: 0 0 7px;
+    border-radius: 50%;
+    background: #c62828;
+}
+
+body.desktop .desktop-status-dot.saved {
+    background: #2e7d32;
+}
+
+body.desktop .desktop-status-dot.unsaved {
+    background: #f9a825;
+}
+
+body.desktop .desktop-status-filename {
+    max-width: min(60vw, 480px);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+body.desktop .desktop-shortcuts-help {
+    position: fixed;
+    z-index: 20;
+    width: 260px;
+    padding: 12px 14px;
+    color: #1f1f1f;
+    background: #fff;
+    border: 1px solid #ccc;
+    border-radius: 3px;
+    box-shadow: 0 3px 12px rgb(0 0 0 / 20%);
+    font-size: 12px;
+}
+
+body.desktop .desktop-shortcuts-help h2 {
+    margin: 0 0 10px;
+    font-size: 13px;
+}
+
+body.desktop .desktop-shortcuts-help dl,
+body.desktop .desktop-shortcuts-help dd {
+    margin: 0;
+}
+
+body.desktop .desktop-shortcuts-help dl > div {
+    display: flex;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 4px 0;
+}
+
+body.desktop .desktop-shortcuts-help dt {
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+body.desktop .desktop-shortcuts-help dd {
+    color: #666;
+    text-align: right;
+}
+
+body.desktop .desktop-tabs {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 15;
+    display: flex;
+    gap: 2px;
+    padding: 4px 6px 0;
+    overflow-x: auto;
+    background: rgb(255 255 255 / 92%);
+    border-bottom: 1px solid #ddd;
+}
+
+body.desktop .desktop-tab {
+    flex: 0 0 auto;
+    max-width: 220px;
+    padding: 5px 10px;
+    border: 1px solid #ddd;
+    border-bottom: none;
+    border-radius: 4px 4px 0 0;
+    background: #f2f2f2;
+    color: #444;
+    font-size: 12px;
+    line-height: 1.3;
+    cursor: pointer;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+body.desktop .desktop-tab:hover {
+    background: #e8e8e8;
+}
+
+body.desktop .desktop-tab.active {
+    background: #fff;
+    color: #1f1f1f;
+    font-weight: 600;
+    border-color: #ccc;
+}
+
+body.desktop .desktop-tab-chooser {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 25;
+    width: 280px;
+    max-height: 60vh;
+    overflow-y: auto;
+    padding: 12px 14px;
+    color: #1f1f1f;
+    background: #fff;
+    border: 1px solid #ccc;
+    border-radius: 3px;
+    box-shadow: 0 3px 12px rgb(0 0 0 / 20%);
+    font-size: 12px;
+}
+
+body.desktop .desktop-tab-chooser h2 {
+    margin: 0 0 10px;
+    font-size: 13px;
+}
+
+body.desktop .desktop-tab-chooser ul {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+
+body.desktop .desktop-tab-chooser li + li {
+    margin-top: 4px;
+}
+
+body.desktop .desktop-tab-chooser button {
+    display: block;
+    width: 100%;
+    padding: 6px 8px;
+    text-align: left;
+    border: 1px solid #ddd;
+    border-radius: 3px;
+    background: #f7f7f7;
+    color: #1f1f1f;
+    font: inherit;
+    cursor: pointer;
+}
+
+body.desktop .desktop-tab-chooser button:hover {
+    background: #eee;
+}
+
+.djs-popup.element-template-chooser {
+    max-width: 1000px;
+    width: fit-content !important;
+}
+
+/* see issue https://github.com/microsoft/vscode/issues/213045 */
+@supports selector(::-webkit-scrollbar) {
+    html {
+        scrollbar-color: unset;
+    }
+}
+
+/* -----------------------------------------------------------------------
+ * Linked Resource Badges
+ * ----------------------------------------------------------------------- */
+
+.linked-resource-badge {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+    height: 20px;
+    border-radius: 3px;
+    font-size: 12px;
+    line-height: 1;
+    cursor: pointer;
+    user-select: none;
+    opacity: 0.85;
+    transition: all 0.15s ease;
+    color: #fff;
+}
+
+.linked-resource-badge:hover {
+    opacity: 1;
+    transform: scale(1.1);
+}
+
+.linked-resource-badge--process {
+    background: #1e88e5;
+}
+
+.linked-resource-badge--decision {
+    background: #43a047;
+}
+
+.linked-resource-badge--form {
+    background: #8e24aa;
+}
+
+.linked-resource-badge--caller {
+    background: #f57c00;
+}
+
+.linked-resource-badge--message {
+    background: #1e88e5;
+}
+
+/* -----------------------------------------------------------------------
+ * Script Editor — textarea badge (↗)
+ * ----------------------------------------------------------------------- */
+
+.script-editor-badge {
+    position: absolute;
+    top: 2px;
+    right: 2px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+    height: 18px;
+    border-radius: 3px;
+    border: none;
+    background: #1e88e5;
+    color: #fff;
+    font-size: 11px;
+    line-height: 1;
+    cursor: pointer;
+    opacity: 0.7;
+    transition:
+        opacity 0.15s ease,
+        transform 0.15s ease;
+    padding: 0;
+    z-index: 1;
+}
+
+.script-editor-badge:hover {
+    opacity: 1;
+    transform: scale(1.1);
+}

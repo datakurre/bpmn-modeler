@@ -1,0 +1,152 @@
+/* Vendored from https://github.com/datakurre/camunda-modeler-embedded-comments-plugin
+   Base styles from bpmn-js-embedded-comments/assets/comments.css
+   Extended styles and font from the plugin's style/style.css
+*/
+
+.comments-overlay {
+    box-sizing: border-box;
+    background: #fafafa;
+    border: solid 1px #ccc;
+    font-size: 12px;
+    display: none;
+    border-radius: 2px;
+    padding: 5px;
+    width: 320px;
+    max-width: calc(100vw - 20px);
+    overflow-wrap: anywhere;
+}
+
+.comments-overlay.expanded {
+    z-index: 100;
+    position: absolute; /* for z-index to work */
+    width: 320px;
+    max-width: calc(100vw - 20px);
+    max-height: 420px;
+    overflow: auto;
+}
+
+.selected .comments-overlay,
+.comments-overlay.with-comments {
+    display: block;
+}
+
+.comments-overlay .toggle {
+    white-space: nowrap;
+}
+
+.comments-overlay.expanded .comment-count,
+.comments-overlay .content {
+    display: none;
+}
+
+.comments-overlay .comment-count {
+    display: inline;
+}
+
+.comments-overlay.expanded .content {
+    display: block;
+}
+
+.comments-overlay.expanded .content,
+.comments-overlay.expanded .comments,
+.comments-overlay.expanded .edit {
+    width: 100%;
+    max-width: 100%;
+}
+
+.comments-overlay textarea {
+    display: block;
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+}
+
+.comments-overlay .comment {
+    border-top: dotted 1px #666;
+    margin-top: 4px;
+    padding-top: 4px;
+    white-space: pre-wrap;
+    position: relative;
+    padding: 4px;
+    border: none;
+    border-bottom: solid 2px #fafafa;
+    margin-bottom: 4px;
+}
+
+.comments-overlay .comment .delete {
+    position: absolute;
+    right: 3px;
+    top: 3px;
+    text-decoration: none;
+    display: none;
+}
+
+.comments-overlay .comment:hover .delete {
+    display: block;
+}
+
+.comments-overlay .edit {
+    margin: 2px 0 0 0;
+    padding-top: 2px;
+}
+
+.comments-overlay .edit textarea {
+    border: none;
+    margin: 0;
+    padding: 4px;
+}
+
+.comments-overlay .edit textarea:active,
+.comments-overlay .edit textarea:focus {
+    outline: none;
+}
+
+.comments-overlay .icon-comment:hover {
+    color: #666;
+    cursor: pointer;
+}
+
+.comments-overlay .icon-comment {
+    margin-right: 2px;
+}
+
+/** fonts **/
+@font-face {
+    font-family: "bpmn-js-comments";
+    src: url("./font/bpmn-js-comments.eot?23532594");
+    src:
+        url("./font/bpmn-js-comments.eot?23532594#iefix") format("embedded-opentype"),
+        url("./font/bpmn-js-comments.woff?23532594") format("woff"),
+        url("./font/bpmn-js-comments.ttf?23532594") format("truetype"),
+        url("./font/bpmn-js-comments.svg?23532594#bpmn-js-comments") format("svg");
+    font-weight: normal;
+    font-style: normal;
+}
+
+[class^="icon-comment"]::before,
+[class*=" icon-comment"]::before,
+[class^="icon-delete"]::before,
+[class*=" icon-delete"]::before {
+    font-family: "bpmn-js-comments";
+    font-style: normal;
+    font-weight: normal;
+    speak: none;
+
+    display: inline-block;
+    text-decoration: inherit;
+    width: 1em;
+    text-align: center;
+
+    font-variant: normal;
+    text-transform: none;
+
+    line-height: 1em;
+}
+
+.icon-comment::before {
+    content: "\e800";
+}
+
+.icon-delete::before {
+    content: "\e802";
+}

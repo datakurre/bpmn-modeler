@@ -1,0 +1,33 @@
+{
+  "components": [
+    {
+      "text": "# Customer Registration\nPlease fill in your details.",
+      "type": "text",
+      "id": "Text_1"
+    },
+    {
+      "label": "Full Name",
+      "type": "textfield",
+      "id": "Field_Name",
+      "key": "fullName",
+      "validate": {
+        "required": true
+      }
+    },
+    {
+      "label": "Email Address",
+      "type": "textfield",
+      "id": "Field_Email",
+      "key": "emailAddress"
+    }
+  ],
+  "type": "default",
+  "id": "Form_Registration",
+  "executionPlatform": "Camunda Platform",
+  "executionPlatformVersion": "7.20",
+  "exporter": {
+    "name": "Operaton Modeler",
+    "version": "0.1.0"
+  },
+  "schemaVersion": 19
+}
