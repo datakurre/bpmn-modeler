@@ -8,11 +8,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1790009291,
-        "narHash": "sha256-2ooxZa1LcwrZYTDht0jt9ovefjQC9fgwfLGPSBzstb8=",
+        "lastModified": 1790021392,
+        "narHash": "sha256-r01t4qTez8MZ853qbiz5Z7lzE5XS3o00YbjDZQW5rsc=",
         "owner": "datakurre",
         "repo": "bpmn-auto-layout",
-        "rev": "16416534b1c7226adf24a332f0f3657f66d8dba9",
+        "rev": "82bc81c78e6abb2637f69b9c1b82017c02516c8c",
         "type": "github"
       },
       "original": {
@@ -96,11 +96,11 @@
     "formRepo": {
       "flake": false,
       "locked": {
-        "lastModified": 1789978541,
-        "narHash": "sha256-ow74e0KAP4IRNweoJC2dIamUsLWdqkvcbd2Ob2EkFo4=",
+        "lastModified": 1789998482,
+        "narHash": "sha256-99hMWvNwq1oiGiRtzv/pVqZBq0YkwH3WMyljibPZFSY=",
         "ref": "refs/heads/main",
-        "rev": "5198c5412b872f5180c450e43276b108167d911d",
-        "revCount": 53,
+        "rev": "0855895554aed92f10c17ea65483b77a12c578c0",
+        "revCount": 54,
         "type": "git",
         "url": "https://gitlab.com/vasara-bpm/vscode-operaton-form-js-modeler.git"
       },
@@ -111,11 +111,11 @@
     },
     "nixpkgs": {
       "locked": {
-        "lastModified": 1789724158,
-        "narHash": "sha256-nlKgrm0dsVhOSopKheVBCcOpiIticufPPVLdVOI0euA=",
+        "lastModified": 1789844176,
+        "narHash": "sha256-COQmpo4lFIzMgUjr3ntDpjH0NwrCnf7N0uhR+6WPGP8=",
         "owner": "NixOS",
         "repo": "nixpkgs",
-        "rev": "0a3468a402c449992505b6a9fc5b06580141b750",
+        "rev": "79b35bf0bda5cd110f856aa5b5b2c5ba4460dbf5",
         "type": "github"
       },
       "original": {
