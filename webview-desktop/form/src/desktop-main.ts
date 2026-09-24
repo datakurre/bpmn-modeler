@@ -1,5 +1,4 @@
 import { invoke } from "@tauri-apps/api/core";
-import { save as saveFile } from "@tauri-apps/plugin-dialog";
 
 import "./styles/default.css";
 import { createEditor, exportSchema } from "./editor";
@@ -33,19 +32,17 @@ const emptySchema = JSON.stringify(
 const saveController = new SaveController(
     {
         exportContent: async () => JSON.stringify(exportSchema(), null, 2),
-        writeDocument: (path, content) => invoke("write_document", { path, content }),
-        pickSavePath: () =>
-            saveFile({
-                defaultPath: "new.form",
-                filters: [{ name: "Form-JS forms", extensions: ["form"] }],
-            }).then((path) => path ?? null),
-        onStateChange: (state) => {
-            void invoke("update_tab_state", {
+        writeDocument: (content) => invoke("write_document", { tabId, content }),
+        saveAs: (content) =>
+            invoke<string | null>("save_document_as", {
                 tabId,
-                dirty: state.dirty,
-                filePath: state.filePath ?? undefined,
-                hasBeenSaved: state.hasBeenSaved,
-            });
+                content,
+                defaultName: "new.form",
+                filterName: "Form-JS forms",
+                extension: "form",
+            }),
+        onStateChange: (state) => {
+            void invoke("update_tab_state", { tabId, dirty: state.dirty });
             updateStatus();
         },
     },

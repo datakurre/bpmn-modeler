@@ -25,7 +25,6 @@
   "dependencies": {
     "@bpmn-io/element-template-icon-renderer": "^1.0.0",
     "@tauri-apps/api": "^2.5.0",
-    "@tauri-apps/plugin-dialog": "^2.2.0",
     "bpmn-moddle": "^10.0.0",
     "camunda-bpmn-moddle": "^7.0.1"
   },

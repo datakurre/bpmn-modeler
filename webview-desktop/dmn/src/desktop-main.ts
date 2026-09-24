@@ -1,5 +1,4 @@
 import { invoke } from "@tauri-apps/api/core";
-import { save as saveFile } from "@tauri-apps/plugin-dialog";
 import Split from "split.js";
 import { DiagramWarning } from "dmn-js/lib/Modeler";
 
@@ -52,19 +51,17 @@ const emptyDmn = `<?xml version="1.0" encoding="UTF-8"?>
 const saveController = new SaveController(
     {
         exportContent: exportDiagram,
-        writeDocument: (path, content) => invoke("write_document", { path, content }),
-        pickSavePath: () =>
-            saveFile({
-                defaultPath: "decision.dmn",
-                filters: [{ name: "DMN diagrams", extensions: ["dmn"] }],
-            }).then((path) => path ?? null),
-        onStateChange: (state) => {
-            void invoke("update_tab_state", {
+        writeDocument: (content) => invoke("write_document", { tabId, content }),
+        saveAs: (content) =>
+            invoke<string | null>("save_document_as", {
                 tabId,
-                dirty: state.dirty,
-                filePath: state.filePath ?? undefined,
-                hasBeenSaved: state.hasBeenSaved,
-            });
+                content,
+                defaultName: "decision.dmn",
+                filterName: "DMN diagrams",
+                extension: "dmn",
+            }),
+        onStateChange: (state) => {
+            void invoke("update_tab_state", { tabId, dirty: state.dirty });
             updateStatus();
         },
     },

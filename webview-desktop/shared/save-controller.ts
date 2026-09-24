@@ -7,10 +7,16 @@ export interface SaveState {
 export interface SaveControllerCallbacks {
     /** Serialize the current editor content for writing to disk. */
     exportContent: () => Promise<string>;
-    /** Write `content` to `path`. Rejecting leaves the controller's state unchanged. */
-    writeDocument: (path: string, content: string) => Promise<void>;
-    /** Prompt the user for a path when the document has never been saved. Resolve `null` to cancel. */
-    pickSavePath: () => Promise<string | null>;
+    /** Write `content` to the already-known saved path. Rejecting leaves the controller's state unchanged. */
+    writeDocument: (content: string) => Promise<void>;
+    /**
+     * Prompt the user for a path (the document has never been saved),
+     * write `content` to it, and resolve the chosen path — or `null` if the
+     * user canceled. The path is picked and written on the same side of the
+     * IPC boundary (the backend), so a compromised webview never gets to
+     * name an arbitrary path here.
+     */
+    saveAs: (content: string) => Promise<string | null>;
     /** Called after every state change (a dirtying edit, or a save's outcome). */
     onStateChange: (state: SaveState) => void;
 }
@@ -86,17 +92,17 @@ export class SaveController {
     }
 
     private async performSave(): Promise<void> {
-        let path = this.filePath;
-        if (!path) {
-            path = await this.callbacks.pickSavePath();
-        }
-        if (!path) return;
-
         const savedGeneration = this.changeGeneration;
         const content = await this.callbacks.exportContent();
-        await this.callbacks.writeDocument(path, content);
 
-        this.filePath = path;
+        if (this.filePath) {
+            await this.callbacks.writeDocument(content);
+        } else {
+            const path = await this.callbacks.saveAs(content);
+            if (!path) return;
+            this.filePath = path;
+        }
+
         this.hasBeenSaved = true;
         this.dirty = this.changeGeneration !== savedGeneration;
         this.callbacks.onStateChange(this.getState());

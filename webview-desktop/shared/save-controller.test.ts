@@ -19,7 +19,7 @@ describe("SaveController", () => {
             {
                 exportContent: async () => "content-v1",
                 writeDocument: () => write.promise,
-                pickSavePath: async () => null,
+                saveAs: async () => null,
                 onStateChange: (s) => states.push(s),
             },
             { filePath: "/tmp/doc.bpmn", hasBeenSaved: true },
@@ -38,7 +38,7 @@ describe("SaveController", () => {
             {
                 exportContent: async () => "content",
                 writeDocument: async () => {},
-                pickSavePath: async () => null,
+                saveAs: async () => null,
                 onStateChange: () => {},
             },
             { filePath: "/tmp/doc.bpmn", hasBeenSaved: true },
@@ -50,24 +50,23 @@ describe("SaveController", () => {
         expect(controller.getState().dirty).toBe(false);
     });
 
-    it("runs at most one path dialog and no overlapping writes for two quick saves", async () => {
-        const pickSavePath = vi.fn(async () => "/tmp/new.bpmn");
+    it("runs at most one Save As dialog and no overlapping writes for two quick saves", async () => {
         const write = deferred<void>();
-        const writeDocument = vi.fn(() => write.promise);
         let concurrentWrites = 0;
         let maxConcurrentWrites = 0;
-        const trackedWrite = vi.fn(async (path: string, content: string) => {
+        const saveAs = vi.fn(async (_content: string) => {
             concurrentWrites += 1;
             maxConcurrentWrites = Math.max(maxConcurrentWrites, concurrentWrites);
-            await writeDocument(path, content);
+            await write.promise;
             concurrentWrites -= 1;
+            return "/tmp/new.bpmn";
         });
 
         const controller = new SaveController(
             {
                 exportContent: async () => "content",
-                writeDocument: trackedWrite,
-                pickSavePath,
+                writeDocument: async () => {},
+                saveAs,
                 onStateChange: () => {},
             },
             { filePath: null, hasBeenSaved: false },
@@ -79,19 +78,19 @@ describe("SaveController", () => {
         write.resolve();
         await Promise.all([first, second]);
 
-        expect(pickSavePath).toHaveBeenCalledTimes(1);
+        expect(saveAs).toHaveBeenCalledTimes(1);
         expect(maxConcurrentWrites).toBeLessThanOrEqual(1);
     });
 
-    it("leaves dirty and filePath unchanged when the write fails", async () => {
+    it("leaves dirty and filePath unchanged when saveAs fails", async () => {
         const states: SaveState[] = [];
         const controller = new SaveController(
             {
                 exportContent: async () => "content",
-                writeDocument: async () => {
+                writeDocument: async () => {},
+                saveAs: async () => {
                     throw new Error("disk full");
                 },
-                pickSavePath: async () => "/tmp/new.bpmn",
                 onStateChange: (s) => states.push(s),
             },
             { filePath: null, hasBeenSaved: false },
@@ -104,5 +103,27 @@ describe("SaveController", () => {
         expect(state.filePath).toBeNull();
         expect(state.dirty).toBe(true);
         expect(state.hasBeenSaved).toBe(false);
+    });
+
+    it("leaves filePath and hasBeenSaved unchanged when writing to an already-saved file fails", async () => {
+        const controller = new SaveController(
+            {
+                exportContent: async () => "content",
+                writeDocument: async () => {
+                    throw new Error("disk full");
+                },
+                saveAs: async () => "/tmp/new.bpmn",
+                onStateChange: () => {},
+            },
+            { filePath: "/tmp/doc.bpmn", hasBeenSaved: true },
+        );
+
+        controller.markDirty();
+        await expect(controller.save()).rejects.toThrow("disk full");
+
+        const state = controller.getState();
+        expect(state.filePath).toBe("/tmp/doc.bpmn");
+        expect(state.dirty).toBe(true);
+        expect(state.hasBeenSaved).toBe(true);
     });
 });

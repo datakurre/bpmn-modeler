@@ -1,5 +1,4 @@
 import { invoke } from "@tauri-apps/api/core";
-import { save as saveFile } from "@tauri-apps/plugin-dialog";
 
 import "./styles/default.css";
 import "./styles/light-theme/index.css";
@@ -51,19 +50,17 @@ const tabId = getTabIdFromLocation();
 const saveController = new SaveController(
     {
         exportContent: exportDiagram,
-        writeDocument: (path, content) => invoke("write_document", { path, content }),
-        pickSavePath: () =>
-            saveFile({
-                defaultPath: "diagram.bpmn",
-                filters: [{ name: "BPMN diagrams", extensions: ["bpmn"] }],
-            }).then((path) => path ?? null),
-        onStateChange: (state) => {
-            void invoke("update_tab_state", {
+        writeDocument: (content) => invoke("write_document", { tabId, content }),
+        saveAs: (content) =>
+            invoke<string | null>("save_document_as", {
                 tabId,
-                dirty: state.dirty,
-                filePath: state.filePath ?? undefined,
-                hasBeenSaved: state.hasBeenSaved,
-            });
+                content,
+                defaultName: "diagram.bpmn",
+                filterName: "BPMN diagrams",
+                extension: "bpmn",
+            }),
+        onStateChange: (state) => {
+            void invoke("update_tab_state", { tabId, dirty: state.dirty });
             updateStatus();
         },
     },
@@ -197,7 +194,7 @@ async function saveDocument(): Promise<void> {
 
 async function discoverLinkedResources(path: string): Promise<void> {
     scannedDirectory = dirnameOf(path);
-    siblingFiles = await loadSiblingBpmnFiles(path);
+    siblingFiles = await loadSiblingBpmnFiles(tabId);
     directoryIndex = await buildDirectoryIndex(siblingFiles);
     await refreshOverlays(path);
 }
@@ -230,7 +227,11 @@ function handleLinkedResourceMessage(msg: unknown): void {
 async function openLinkedFile(relativePath: string): Promise<void> {
     if (!scannedDirectory) return;
     const path = joinPath(scannedDirectory, relativePath);
-    await invoke("open_tab", { path, kind: "bpmn" });
+    try {
+        await invoke("open_tab", { path, kind: "bpmn" });
+    } catch (error) {
+        showStatus(`Unable to open ${relativePath}: ${formatError(error)}`);
+    }
 }
 
 function hideCandidateChooser(): void {

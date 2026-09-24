@@ -474,7 +474,41 @@ fn open_tab(
     path: Option<String>,
     kind: Option<String>,
 ) -> Result<TabInfo, String> {
+    if let Some(ref p) = path {
+        let resolved = resolve_launch_path(PathBuf::from(p));
+        let registry_state = app.state::<Mutex<TabRegistry>>();
+        let reg = registry_state.lock().unwrap();
+        if !reg.is_path_allowed(&resolved) {
+            return Err(format!(
+                "\"{}\" is neither an already-open file nor a sibling of one",
+                resolved.display()
+            ));
+        }
+    }
+
     do_open_tab(&app, path, kind)
+}
+
+/// Shows a native "Open" dialog and opens whatever file is picked, entirely
+/// in Rust — a webview never gets to name an arbitrary path here, unlike
+/// `open_tab`'s `path` argument, which is guarded but still webview-supplied.
+#[tauri::command]
+fn pick_and_open_file(app: AppHandle) -> Result<Option<TabInfo>, String> {
+    let picked = app
+        .dialog()
+        .file()
+        .add_filter("Operaton files", &["bpmn", "dmn", "form"])
+        .add_filter("BPMN diagrams", &["bpmn"])
+        .add_filter("DMN diagrams", &["dmn"])
+        .add_filter("Form definitions", &["form"])
+        .blocking_pick_file();
+
+    let Some(file_path) = picked else {
+        return Ok(None);
+    };
+    let path = file_path.into_path().map_err(|e| e.to_string())?;
+
+    do_open_tab(&app, Some(path.to_string_lossy().into_owned()), None).map(Some)
 }
 
 #[tauri::command]
@@ -487,46 +521,101 @@ fn close_tab(app: AppHandle, tab_id: String, force: Option<bool>) -> Result<(), 
     do_close_tab_with_confirmation(&app, &tab_id, force.unwrap_or(false))
 }
 
+/// A tab's dirty flag is the only state a webview can freely report about
+/// itself: its file path is set only by `open_tab`/`pick_and_open_file` (at
+/// open time) or `save_document_as` (at first save), both backend-driven,
+/// so a compromised webview can't use this to add an arbitrary path to its
+/// own tab's allow-listed file.
 #[tauri::command]
-fn update_tab_state(
-    app: AppHandle,
-    tab_id: String,
-    dirty: Option<bool>,
-    file_path: Option<String>,
-    has_been_saved: Option<bool>,
-) -> Result<(), String> {
+fn update_tab_state(app: AppHandle, tab_id: String, dirty: bool) -> Result<(), String> {
     let registry_state = app.state::<Mutex<TabRegistry>>();
     let mut reg = registry_state.lock().unwrap();
 
     let tab = reg
         .get_tab_by_id_mut(&tab_id)
         .ok_or_else(|| format!("Tab not found: {tab_id}"))?;
-
-    if let Some(d) = dirty {
-        tab.info.dirty = d;
-    }
-    if let Some(s) = has_been_saved {
-        tab.info.has_been_saved = s;
-    }
-    if let Some(p) = file_path {
-        let pb = PathBuf::from(&p);
-        if let Some(name) = pb.file_name() {
-            tab.info.label = name.to_string_lossy().into_owned();
-        }
-        tab.info.file_path = Some(p);
-    }
+    tab.info.dirty = dirty;
 
     emit_tabs_changed(&app, &reg);
     Ok(())
 }
 
 #[tauri::command]
-fn write_document(path: String, content: String) -> Result<(), String> {
+fn write_document(app: AppHandle, tab_id: String, content: String) -> Result<(), String> {
+    let registry_state = app.state::<Mutex<TabRegistry>>();
+    let reg = registry_state.lock().unwrap();
+    let tab = reg
+        .get_tab_by_id(&tab_id)
+        .ok_or_else(|| format!("Tab not found: {tab_id}"))?;
+    let path = tab
+        .info
+        .file_path
+        .clone()
+        .ok_or_else(|| "Tab has no file path yet; use save_document_as".to_string())?;
+    drop(reg);
+
     atomic_write::atomic_write(Path::new(&path), content.as_bytes()).map_err(|e| e.to_string())
 }
 
+/// Shows a native "Save As" dialog and, if a path was chosen, writes
+/// `content` to it and records it on the tab. The path never passes through
+/// the webview: it comes straight from the dialog into this same command.
 #[tauri::command]
-fn list_sibling_bpmn_files(path: String) -> Result<Vec<SiblingBpmnFile>, String> {
+fn save_document_as(
+    app: AppHandle,
+    tab_id: String,
+    content: String,
+    default_name: String,
+    filter_name: String,
+    extension: String,
+) -> Result<Option<String>, String> {
+    let picked = app
+        .dialog()
+        .file()
+        .set_file_name(&default_name)
+        .add_filter(&filter_name, &[extension.as_str()])
+        .blocking_save_file();
+
+    let Some(file_path) = picked else {
+        return Ok(None);
+    };
+    let path = file_path.into_path().map_err(|e| e.to_string())?;
+
+    atomic_write::atomic_write(&path, content.as_bytes()).map_err(|e| e.to_string())?;
+
+    let path_string = path.to_string_lossy().into_owned();
+
+    let registry_state = app.state::<Mutex<TabRegistry>>();
+    let mut reg = registry_state.lock().unwrap();
+    let tab = reg
+        .get_tab_by_id_mut(&tab_id)
+        .ok_or_else(|| format!("Tab not found: {tab_id}"))?;
+    if let Some(name) = path.file_name() {
+        tab.info.label = name.to_string_lossy().into_owned();
+    }
+    tab.info.file_path = Some(path_string.clone());
+    tab.info.has_been_saved = true;
+    emit_tabs_changed(&app, &reg);
+
+    Ok(Some(path_string))
+}
+
+#[tauri::command]
+fn list_sibling_bpmn_files(
+    app: AppHandle,
+    tab_id: String,
+) -> Result<Vec<SiblingBpmnFile>, String> {
+    let registry_state = app.state::<Mutex<TabRegistry>>();
+    let reg = registry_state.lock().unwrap();
+    let tab = reg
+        .get_tab_by_id(&tab_id)
+        .ok_or_else(|| format!("Tab not found: {tab_id}"))?;
+    let path = match tab.info.file_path.clone() {
+        Some(p) => p,
+        None => return Ok(Vec::new()),
+    };
+    drop(reg);
+
     let directory = Path::new(&path)
         .parent()
         .map(Path::to_path_buf)
@@ -707,10 +796,12 @@ pub fn run() {
             get_tabs,
             get_tab_document,
             open_tab,
+            pick_and_open_file,
             focus_tab,
             close_tab,
             update_tab_state,
             write_document,
+            save_document_as,
             list_sibling_bpmn_files,
             minimize_window,
             maximize_window,

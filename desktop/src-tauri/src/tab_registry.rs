@@ -99,6 +99,36 @@ impl TabRegistry {
         self.tabs.iter_mut().find(|t| t.info.id == id)
     }
 
+    /// True if `path` may be read by a file IPC command triggered from a
+    /// webview: it resolves (after following symlinks and `..`) either to
+    /// an already-registered tab's own file, or to a file directly inside
+    /// that tab's directory (the case for linked BPMN resources opened by
+    /// clicking an overlay). A symlink whose real target lives outside
+    /// that directory is rejected even if the link itself lives inside it.
+    pub fn is_path_allowed(&self, path: &Path) -> bool {
+        let Ok(canonical) = path.canonicalize() else {
+            return false;
+        };
+
+        self.tabs.iter().any(|tab| {
+            let Some(tab_path) = tab.info.file_path.as_deref().map(Path::new) else {
+                return false;
+            };
+
+            if let Ok(canonical_tab_path) = tab_path.canonicalize() {
+                if canonical_tab_path == canonical {
+                    return true;
+                }
+            }
+
+            let allowed_dir = tab_path.parent().and_then(|p| p.canonicalize().ok());
+            match (allowed_dir, canonical.parent()) {
+                (Some(allowed_dir), Some(candidate_dir)) => allowed_dir == candidate_dir,
+                _ => false,
+            }
+        })
+    }
+
     /// Labels of every tab with unsaved changes, in tab order.
     pub fn dirty_tab_labels(&self) -> Vec<String> {
         self.tabs
@@ -333,6 +363,130 @@ mod tests {
     fn get_tab_by_path_returns_none_for_unknown_path() {
         let registry = TabRegistry::new();
         assert!(registry.get_tab_by_path("/no/such/path.bpmn").is_none());
+    }
+
+    #[test]
+    fn is_path_allowed_permits_a_tabs_own_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let file_path = dir.path().join("diagram.bpmn");
+        std::fs::write(&file_path, "content").unwrap();
+
+        let mut registry = TabRegistry::new();
+        let tab = make_tab(
+            &mut registry,
+            "diagram.bpmn",
+            Some(file_path.to_string_lossy().into_owned()),
+        );
+        registry.add_tab(tab);
+
+        assert!(registry.is_path_allowed(&file_path));
+    }
+
+    #[test]
+    fn is_path_allowed_permits_a_sibling_in_the_same_directory() {
+        let dir = tempfile::tempdir().unwrap();
+        let open_path = dir.path().join("diagram.bpmn");
+        let sibling_path = dir.path().join("called.bpmn");
+        std::fs::write(&open_path, "content").unwrap();
+        std::fs::write(&sibling_path, "content").unwrap();
+
+        let mut registry = TabRegistry::new();
+        let tab = make_tab(
+            &mut registry,
+            "diagram.bpmn",
+            Some(open_path.to_string_lossy().into_owned()),
+        );
+        registry.add_tab(tab);
+
+        assert!(registry.is_path_allowed(&sibling_path));
+    }
+
+    #[test]
+    fn is_path_allowed_rejects_a_dot_dot_traversal_out_of_the_directory() {
+        let dir = tempfile::tempdir().unwrap();
+        let open_path = dir.path().join("diagram.bpmn");
+        std::fs::write(&open_path, "content").unwrap();
+
+        // A file that exists, but only by walking out of the tab's
+        // directory via `..` — must not be treated as a sibling.
+        let outside_dir = tempfile::tempdir().unwrap();
+        let outside_file = outside_dir.path().join("secret.bpmn");
+        std::fs::write(&outside_file, "content").unwrap();
+        let traversal_path = dir
+            .path()
+            .join("..")
+            .join(outside_dir.path().file_name().unwrap())
+            .join("secret.bpmn");
+
+        let mut registry = TabRegistry::new();
+        let tab = make_tab(
+            &mut registry,
+            "diagram.bpmn",
+            Some(open_path.to_string_lossy().into_owned()),
+        );
+        registry.add_tab(tab);
+
+        assert!(!registry.is_path_allowed(&traversal_path));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn is_path_allowed_rejects_a_symlink_pointing_outside_the_directory() {
+        use std::os::unix::fs::symlink;
+
+        let dir = tempfile::tempdir().unwrap();
+        let open_path = dir.path().join("diagram.bpmn");
+        std::fs::write(&open_path, "content").unwrap();
+
+        let outside_dir = tempfile::tempdir().unwrap();
+        let outside_file = outside_dir.path().join("secret.bpmn");
+        std::fs::write(&outside_file, "content").unwrap();
+
+        // The symlink itself lives inside the tab's directory, but its
+        // real target does not.
+        let link_path = dir.path().join("escape.bpmn");
+        symlink(&outside_file, &link_path).unwrap();
+
+        let mut registry = TabRegistry::new();
+        let tab = make_tab(
+            &mut registry,
+            "diagram.bpmn",
+            Some(open_path.to_string_lossy().into_owned()),
+        );
+        registry.add_tab(tab);
+
+        assert!(!registry.is_path_allowed(&link_path));
+    }
+
+    #[test]
+    fn is_path_allowed_rejects_an_unrelated_path() {
+        let dir = tempfile::tempdir().unwrap();
+        let open_path = dir.path().join("diagram.bpmn");
+        std::fs::write(&open_path, "content").unwrap();
+
+        let unrelated_dir = tempfile::tempdir().unwrap();
+        let unrelated_file = unrelated_dir.path().join("other.bpmn");
+        std::fs::write(&unrelated_file, "content").unwrap();
+
+        let mut registry = TabRegistry::new();
+        let tab = make_tab(
+            &mut registry,
+            "diagram.bpmn",
+            Some(open_path.to_string_lossy().into_owned()),
+        );
+        registry.add_tab(tab);
+
+        assert!(!registry.is_path_allowed(&unrelated_file));
+    }
+
+    #[test]
+    fn is_path_allowed_rejects_when_no_tabs_are_open() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("diagram.bpmn");
+        std::fs::write(&path, "content").unwrap();
+
+        let registry = TabRegistry::new();
+        assert!(!registry.is_path_allowed(&path));
     }
 
     #[test]
