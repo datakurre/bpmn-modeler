@@ -9,6 +9,7 @@ use tauri::{
     AppHandle, Emitter, LogicalPosition, LogicalSize, Manager, WebviewBuilder, WebviewUrl, Window,
     WindowBuilder,
 };
+use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
 
 pub use tab_registry::{EditorKind, TabInfo, TabRegistry, TabState, TAB_BAR_HEIGHT};
 
@@ -345,6 +346,83 @@ fn do_close_tab(app: &AppHandle, tab_id: &str) -> Result<(), String> {
     Ok(())
 }
 
+/// The confirmation message for discarding a single tab's unsaved changes.
+fn discard_tab_message(label: &str) -> String {
+    format!("\"{label}\" has unsaved changes. Discard them?")
+}
+
+/// The confirmation message for quitting with one or more dirty tabs, or
+/// `None` if nothing is dirty and quitting needs no confirmation.
+fn quit_confirmation_message(dirty_labels: &[String]) -> Option<String> {
+    if dirty_labels.is_empty() {
+        return None;
+    }
+    let (noun, verb) = if dirty_labels.len() == 1 {
+        ("document", "has")
+    } else {
+        ("documents", "have")
+    };
+    Some(format!(
+        "{} {noun} {verb} unsaved changes: {}. Quit anyway?",
+        dirty_labels.len(),
+        dirty_labels.join(", ")
+    ))
+}
+
+fn dirty_tab_labels(app: &AppHandle) -> Vec<String> {
+    let registry_state = app.state::<Mutex<TabRegistry>>();
+    let reg = registry_state.lock().unwrap();
+    reg.dirty_tab_labels()
+}
+
+/// Show a blocking discard/cancel dialog. Only safe to call off the main
+/// thread (e.g. from a `#[tauri::command]` handler, never from
+/// `on_window_event`).
+fn confirm_discard_blocking(app: &AppHandle, message: String) -> bool {
+    app.dialog()
+        .message(message)
+        .title("Unsaved changes")
+        .kind(MessageDialogKind::Warning)
+        .buttons(MessageDialogButtons::OkCancelCustom(
+            "Discard".into(),
+            "Cancel".into(),
+        ))
+        .blocking_show()
+}
+
+/// Same as `confirm_discard_blocking`, with a "Quit Anyway" affirmative
+/// button instead of "Discard". Also only safe off the main thread.
+fn confirm_quit_blocking(app: &AppHandle, message: String) -> bool {
+    app.dialog()
+        .message(message)
+        .title("Unsaved changes")
+        .kind(MessageDialogKind::Warning)
+        .buttons(MessageDialogButtons::OkCancelCustom(
+            "Quit Anyway".into(),
+            "Cancel".into(),
+        ))
+        .blocking_show()
+}
+
+fn do_close_tab_with_confirmation(app: &AppHandle, tab_id: &str, force: bool) -> Result<(), String> {
+    if !force {
+        let registry_state = app.state::<Mutex<TabRegistry>>();
+        let reg = registry_state.lock().unwrap();
+        let tab = reg
+            .get_tab_by_id(tab_id)
+            .ok_or_else(|| format!("Tab {tab_id} not found"))?;
+        let dirty = tab.info.dirty;
+        let label = tab.info.label.clone();
+        drop(reg);
+
+        if dirty && !confirm_discard_blocking(app, discard_tab_message(&label)) {
+            return Ok(());
+        }
+    }
+
+    do_close_tab(app, tab_id)
+}
+
 // ── IPC Commands ────────────────────────────────────────────────────────────
 
 #[tauri::command]
@@ -390,8 +468,8 @@ fn focus_tab(app: AppHandle, tab_id: String) -> Result<(), String> {
 }
 
 #[tauri::command]
-fn close_tab(app: AppHandle, tab_id: String) -> Result<(), String> {
-    do_close_tab(&app, &tab_id)
+fn close_tab(app: AppHandle, tab_id: String, force: Option<bool>) -> Result<(), String> {
+    do_close_tab_with_confirmation(&app, &tab_id, force.unwrap_or(false))
 }
 
 #[tauri::command]
@@ -486,7 +564,15 @@ fn maximize_window(app: AppHandle) -> Result<(), String> {
 
 #[tauri::command]
 fn quit_app(app: AppHandle) {
-    app.exit(0);
+    let dirty_labels = dirty_tab_labels(&app);
+    match quit_confirmation_message(&dirty_labels) {
+        None => app.exit(0),
+        Some(message) => {
+            if confirm_quit_blocking(&app, message) {
+                app.exit(0);
+            }
+        }
+    }
 }
 
 pub fn run() {
@@ -531,14 +617,41 @@ pub fn run() {
             pin_shell_gtk_height(&app.handle(), shell_height, !has_initial_file);
 
             let app_handle = app.handle().clone();
-            window.on_window_event(move |event| {
-                if matches!(event, tauri::WindowEvent::Resized(_)) {
+            window.on_window_event(move |event| match event {
+                tauri::WindowEvent::Resized(_) => {
                     let registry = app_handle.state::<Mutex<TabRegistry>>();
                     let reg = registry.lock().unwrap();
                     if let Some(win) = app_handle.get_window("main") {
                         let _ = do_resize_webviews(&app_handle, &win, &reg);
                     }
                 }
+                tauri::WindowEvent::CloseRequested { api, .. } => {
+                    // Runs on the platform event loop, so the confirmation
+                    // dialog must be non-blocking here (unlike quit_app).
+                    api.prevent_close();
+                    let dirty_labels = dirty_tab_labels(&app_handle);
+                    match quit_confirmation_message(&dirty_labels) {
+                        None => app_handle.exit(0),
+                        Some(message) => {
+                            let app_for_dialog = app_handle.clone();
+                            app_handle
+                                .dialog()
+                                .message(message)
+                                .title("Unsaved changes")
+                                .kind(MessageDialogKind::Warning)
+                                .buttons(MessageDialogButtons::OkCancelCustom(
+                                    "Quit Anyway".into(),
+                                    "Cancel".into(),
+                                ))
+                                .show(move |confirmed| {
+                                    if confirmed {
+                                        app_for_dialog.exit(0);
+                                    }
+                                });
+                        }
+                    }
+                }
+                _ => {}
             });
 
             for path in initial_args {
@@ -566,4 +679,41 @@ pub fn run() {
         ])
         .run(tauri::generate_context!())
         .expect("error while running Operaton Modeler");
+}
+
+#[cfg(test)]
+mod quit_confirmation_tests {
+    use super::*;
+
+    #[test]
+    fn discard_tab_message_names_the_file() {
+        assert_eq!(
+            discard_tab_message("diagram.bpmn"),
+            "\"diagram.bpmn\" has unsaved changes. Discard them?"
+        );
+    }
+
+    #[test]
+    fn quit_confirmation_message_is_none_when_nothing_dirty() {
+        assert_eq!(quit_confirmation_message(&[]), None);
+    }
+
+    #[test]
+    fn quit_confirmation_message_uses_singular_grammar_for_one_tab() {
+        let message = quit_confirmation_message(&["a.bpmn".to_string()]).unwrap();
+        assert_eq!(
+            message,
+            "1 document has unsaved changes: a.bpmn. Quit anyway?"
+        );
+    }
+
+    #[test]
+    fn quit_confirmation_message_lists_every_dirty_tab() {
+        let message =
+            quit_confirmation_message(&["a.bpmn".to_string(), "b.dmn".to_string()]).unwrap();
+        assert_eq!(
+            message,
+            "2 documents have unsaved changes: a.bpmn, b.dmn. Quit anyway?"
+        );
+    }
 }

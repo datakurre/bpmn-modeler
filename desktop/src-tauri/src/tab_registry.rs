@@ -99,6 +99,15 @@ impl TabRegistry {
         self.tabs.iter_mut().find(|t| t.info.id == id)
     }
 
+    /// Labels of every tab with unsaved changes, in tab order.
+    pub fn dirty_tab_labels(&self) -> Vec<String> {
+        self.tabs
+            .iter()
+            .filter(|t| t.info.dirty)
+            .map(|t| t.info.label.clone())
+            .collect()
+    }
+
     pub fn get_tab_by_path(&self, path: &str) -> Option<&TabState> {
         let canonical_target = Path::new(path).canonicalize().ok();
         self.tabs.iter().find(|t| {
@@ -324,5 +333,29 @@ mod tests {
     fn get_tab_by_path_returns_none_for_unknown_path() {
         let registry = TabRegistry::new();
         assert!(registry.get_tab_by_path("/no/such/path.bpmn").is_none());
+    }
+
+    #[test]
+    fn dirty_tab_labels_lists_only_dirty_tabs_in_order() {
+        let mut registry = TabRegistry::new();
+        let mut a = make_tab(&mut registry, "a.bpmn", None);
+        let b = make_tab(&mut registry, "b.dmn", None);
+        let mut c = make_tab(&mut registry, "c.form", None);
+        a.info.dirty = true;
+        c.info.dirty = true;
+        registry.add_tab(a);
+        registry.add_tab(b);
+        registry.add_tab(c);
+
+        assert_eq!(registry.dirty_tab_labels(), vec!["a.bpmn", "c.form"]);
+    }
+
+    #[test]
+    fn dirty_tab_labels_is_empty_when_nothing_is_dirty() {
+        let mut registry = TabRegistry::new();
+        let tab = make_tab(&mut registry, "a.bpmn", None);
+        registry.add_tab(tab);
+
+        assert!(registry.dirty_tab_labels().is_empty());
     }
 }
