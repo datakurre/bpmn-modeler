@@ -2,6 +2,16 @@ export function basenameOf(path: string): string {
   return path.split(/[\\/]/).pop() ?? path;
 }
 
+/**
+ * A tab's saved content is blank both when the document has never been
+ * saved (`null`) and when it was saved as a 0-byte file (`""`). Either way
+ * there's nothing to import, so editors should treat both as "start a new
+ * document" rather than trying to load empty content.
+ */
+export function hasContent(content: string | null | undefined): content is string {
+  return !!content && content.trim().length > 0;
+}
+
 export function formatError(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }

@@ -31,24 +31,22 @@ import {
     layoutSelectedElements,
     parseLaidOutGeometry,
 } from "./selection-layout";
-import { focusNextTab, focusPreviousTab } from "../../shared/tab-cycle";
 import {
     basenameOf,
     formatError,
+    hasContent,
     showDesktopStatus,
     updateDesktopStatus,
 } from "../../shared/desktop-editor";
 import { SaveController } from "../../shared/save-controller";
+import {
+    getTabIdFromLocation,
+    installCommonKeyboardHandlers,
+    installShortcutsHelp,
+    type TabDocument,
+} from "../../shared/desktop-shell";
 
-interface TabDocument {
-    tabId: string;
-    kind: "bpmn" | "dmn" | "form";
-    path: string | null;
-    content: string | null;
-    hasBeenSaved: boolean;
-}
-
-const tabId = new URLSearchParams(location.search).get("tabId") ?? "";
+const tabId = getTabIdFromLocation();
 
 const saveController = new SaveController(
     {
@@ -92,16 +90,9 @@ window.addEventListener("load", () => {
     void initialize();
 });
 
-window.addEventListener("contextmenu", (event) => {
-    event.preventDefault();
-    showShortcutsHelp(event.clientX, event.clientY);
-});
+installShortcutsHelp();
 
 window.addEventListener("click", (event) => {
-    const help = document.getElementById("desktop-shortcuts-help");
-    if (help && !help.contains(event.target as Node)) {
-        hideShortcutsHelp();
-    }
     const chooser = document.getElementById("desktop-tab-chooser");
     if (chooser && !chooser.contains(event.target as Node)) {
         hideCandidateChooser();
@@ -118,7 +109,7 @@ async function initialize(): Promise<void> {
         });
         createModeler({ comments: false });
 
-        if (doc.content !== null) {
+        if (hasContent(doc.content)) {
             const result = await loadDiagram(doc.content);
             if (result.warnings.length > 0) {
                 console.warn("Import warnings:", result.warnings);
@@ -151,14 +142,17 @@ async function initialize(): Promise<void> {
     }
 }
 
-window.addEventListener("keydown", (event) => {
-    if (event.key === "Escape") {
-        hideShortcutsHelp();
+installCommonKeyboardHandlers({
+    onSave: () => void saveDocument(),
+    onEscape: () => {
         hideCandidateChooser();
         getModelerInstance()?.get<any>("toggleMode").toggleMode(false);
-        return;
-    }
+    },
+});
 
+// BPMN-specific shortcuts, on top of the Escape/Ctrl+Q/Ctrl+S/Ctrl+Tab ones
+// installCommonKeyboardHandlers() already wires above.
+window.addEventListener("keydown", (event) => {
     const modifierPressed = event.ctrlKey || event.metaKey;
     const key = event.key.toLowerCase();
 
@@ -172,16 +166,6 @@ window.addEventListener("keydown", (event) => {
         redoDiagram();
     }
 
-    if (modifierPressed && key === "q") {
-        event.preventDefault();
-        void invoke("quit_app");
-    }
-
-    if (modifierPressed && key === "s") {
-        event.preventDefault();
-        void saveDocument();
-    }
-
     if (modifierPressed && key === "l") {
         event.preventDefault();
         void autoLayout();
@@ -190,11 +174,6 @@ window.addEventListener("keydown", (event) => {
     if (modifierPressed && key === "p") {
         event.preventDefault();
         document.body.classList.toggle("properties-visible");
-    }
-
-    if (modifierPressed && key === "tab") {
-        event.preventDefault();
-        void (event.shiftKey ? focusPreviousTab() : focusNextTab());
     }
 });
 
@@ -281,22 +260,6 @@ function showCandidateChooser(candidates: CallerCandidate[]): void {
     }
     chooserElement.appendChild(list);
     chooserElement.hidden = false;
-}
-
-function showShortcutsHelp(x: number, y: number): void {
-    const help = document.getElementById("desktop-shortcuts-help");
-    if (!help) return;
-
-    help.hidden = false;
-    const left = Math.min(x, window.innerWidth - help.offsetWidth - 8);
-    const top = Math.min(y, window.innerHeight - help.offsetHeight - 8);
-    help.style.left = `${Math.max(8, left)}px`;
-    help.style.top = `${Math.max(8, top)}px`;
-}
-
-function hideShortcutsHelp(): void {
-    const help = document.getElementById("desktop-shortcuts-help");
-    if (help) help.hidden = true;
 }
 
 async function autoLayout(): Promise<void> {

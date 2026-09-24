@@ -22,23 +22,21 @@ import {
     onCommandStackChanged,
 } from "../../../vendor/dmn-js-modeler/webview/src/modeler";
 import { createEvaluationPanel } from "../../../vendor/dmn-js-modeler/webview/src/evaluation-panel";
-import { focusNextTab, focusPreviousTab } from "../../shared/tab-cycle";
 import {
     formatError,
+    hasContent,
     showDesktopStatus,
     updateDesktopStatus,
 } from "../../shared/desktop-editor";
 import { SaveController } from "../../shared/save-controller";
+import {
+    getTabIdFromLocation,
+    installCommonKeyboardHandlers,
+    installShortcutsHelp,
+    type TabDocument,
+} from "../../shared/desktop-shell";
 
-interface TabDocument {
-    tabId: string;
-    kind: "bpmn" | "dmn" | "form";
-    path: string | null;
-    content: string | null;
-    hasBeenSaved: boolean;
-}
-
-const tabId = new URLSearchParams(location.search).get("tabId") ?? "";
+const tabId = getTabIdFromLocation();
 
 const emptyDmn = `<?xml version="1.0" encoding="UTF-8"?>
 <definitions xmlns="https://www.omg.org/spec/DMN/20191111/MODEL/" id="definitions" name="definitions" namespace="http://camunda.org/schema/1.0/dmn">
@@ -80,17 +78,7 @@ window.addEventListener("load", () => {
     void initialize();
 });
 
-window.addEventListener("contextmenu", (event) => {
-    event.preventDefault();
-    showShortcutsHelp(event.clientX, event.clientY);
-});
-
-window.addEventListener("click", (event) => {
-    const help = document.getElementById("desktop-shortcuts-help");
-    if (help && !help.contains(event.target as Node)) {
-        hideShortcutsHelp();
-    }
-});
+installShortcutsHelp();
 
 async function initialize(): Promise<void> {
     try {
@@ -116,7 +104,7 @@ async function initialize(): Promise<void> {
             evaluationPanel = createEvaluationPanel(dropZone);
         }
 
-        await openXml(doc.content ?? emptyDmn);
+        await openXml(hasContent(doc.content) ? doc.content : emptyDmn);
         initializing = false;
 
         document.body.classList.add("desktop-ready");
@@ -156,25 +144,8 @@ async function sendCurrentDmnToEvaluationPanel(): Promise<void> {
     await evaluationPanel.updateDmn(dmn);
 }
 
-window.addEventListener("keydown", (event) => {
-    if (event.key === "Escape") {
-        hideShortcutsHelp();
-        return;
-    }
-
-    const modifierPressed = event.ctrlKey || event.metaKey;
-    const key = event.key.toLowerCase();
-
-    if (modifierPressed && key === "q") {
-        event.preventDefault();
-        void invoke("quit_app");
-    } else if (modifierPressed && key === "s") {
-        event.preventDefault();
-        void saveDocument();
-    } else if (modifierPressed && key === "tab") {
-        event.preventDefault();
-        void (event.shiftKey ? focusPreviousTab() : focusNextTab());
-    }
+installCommonKeyboardHandlers({
+    onSave: () => void saveDocument(),
 });
 
 function markDirty(): void {
@@ -198,20 +169,4 @@ function updateStatus(): void {
 
 function showStatus(message: string): void {
     showDesktopStatus(message);
-}
-
-function showShortcutsHelp(x: number, y: number): void {
-    const help = document.getElementById("desktop-shortcuts-help");
-    if (!help) return;
-
-    help.hidden = false;
-    const left = Math.min(x, window.innerWidth - help.offsetWidth - 8);
-    const top = Math.min(y, window.innerHeight - help.offsetHeight - 8);
-    help.style.left = `${Math.max(8, left)}px`;
-    help.style.top = `${Math.max(8, top)}px`;
-}
-
-function hideShortcutsHelp(): void {
-    const help = document.getElementById("desktop-shortcuts-help");
-    if (help) help.hidden = true;
 }

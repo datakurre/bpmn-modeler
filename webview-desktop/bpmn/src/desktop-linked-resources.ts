@@ -30,8 +30,10 @@ export async function loadSiblingBpmnFiles(path: string): Promise<Map<string, st
 
 /**
  * Builds a process-only resource index from a directory's BPMN files.
- * Decisions/forms aren't indexed: the desktop app has no DMN/form editor to
- * open them in, so those link types are never resolved here.
+ * Decisions/forms aren't indexed: the backend's `list_sibling_bpmn_files`
+ * only enumerates `.bpmn` siblings, so `bpmnFileMap` never contains any
+ * `.dmn`/`.form` content to index those link types from, even though the
+ * desktop app does have DMN and Form editors that could open them.
  */
 export async function buildDirectoryIndex(
     bpmnFileMap: Map<string, string>,
