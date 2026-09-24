@@ -1,8 +1,8 @@
+mod atomic_write;
 mod tab_registry;
 
 use serde::Serialize;
-use std::fs::{self, File};
-use std::io::Write;
+use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use tauri::{
@@ -429,27 +429,7 @@ fn update_tab_state(
 
 #[tauri::command]
 fn write_document(path: String, content: String) -> Result<(), String> {
-    let destination = Path::new(&path);
-    let parent = destination.parent().unwrap_or_else(|| Path::new("."));
-    let filename = destination
-        .file_name()
-        .ok_or_else(|| format!("Invalid path: {path}"))?
-        .to_string_lossy();
-    let temporary = parent.join(format!(".{filename}.{}.tmp", std::process::id()));
-
-    let result = (|| {
-        let mut file = File::create(&temporary).map_err(|error| error.to_string())?;
-        file.write_all(content.as_bytes())
-            .map_err(|error| error.to_string())?;
-        file.sync_all().map_err(|error| error.to_string())?;
-        fs::rename(&temporary, destination).map_err(|error| error.to_string())
-    })();
-
-    if result.is_err() {
-        let _ = fs::remove_file(&temporary);
-    }
-
-    result
+    atomic_write::atomic_write(Path::new(&path), content.as_bytes()).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
