@@ -4,20 +4,18 @@ import { resolve } from "path";
 import { existsSync } from "fs";
 
 // Conditionally include the operaton-dmn TeaVM bundle if it was built (see
-// vscode-operaton-dmn-js-modeler's `make build-operaton-dmn`). It is copied
-// to the build's output root (not an `assets/` subfolder) because
-// `engine/operaton-dmn.ts` loads it via a `@vite-ignore` relative dynamic
-// import that resolves against the compiled entry chunk's own location —
-// see `build.rollupOptions.output.entryFileNames` below, which keeps that
-// chunk at the output root too.
-const operatonBundlePath = resolve(
-    __dirname,
-    "../../vendor/dmn-js-modeler/webview/src/engine/operaton-dmn-bundle.js",
-);
+// vscode-operaton-dmn-js-modeler's `make build-operaton-dmn`, or the
+// checked-in copy under src/engine/). It is copied to the build's output
+// root (not an `assets/` subfolder) because `engine/operaton-dmn.ts` loads
+// it via a `@vite-ignore` relative dynamic import that resolves against the
+// compiled entry chunk's own location — see
+// `build.rollupOptions.output.entryFileNames` below, which keeps that chunk
+// at the output root too.
+const operatonBundlePath = resolve(__dirname, "src/engine/operaton-dmn-bundle.js");
 const operatonCopyTargets = existsSync(operatonBundlePath)
     ? [
           {
-              src: "../../vendor/dmn-js-modeler/webview/src/engine/operaton-dmn-bundle.js",
+              src: "src/engine/operaton-dmn-bundle.js",
               dest: ".",
           },
       ]

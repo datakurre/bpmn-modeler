@@ -3,7 +3,7 @@ import { save as saveFile } from "@tauri-apps/plugin-dialog";
 import Split from "split.js";
 import { DiagramWarning } from "dmn-js/lib/Modeler";
 
-import "../../../vendor/dmn-js-modeler/webview/src/styles.css";
+import "./styles.css";
 import "dmn-js/dist/assets/dmn-font/css/dmn.css";
 import "dmn-js/dist/assets/diagram-js.css";
 import "dmn-js/dist/assets/dmn-js-decision-table.css";
@@ -20,8 +20,8 @@ import {
     getModelerInstance,
     loadDiagram,
     onCommandStackChanged,
-} from "../../../vendor/dmn-js-modeler/webview/src/modeler";
-import { createEvaluationPanel } from "../../../vendor/dmn-js-modeler/webview/src/evaluation-panel";
+} from "./modeler";
+import { createEvaluationPanel } from "./evaluation-panel";
 import {
     formatError,
     hasContent,
