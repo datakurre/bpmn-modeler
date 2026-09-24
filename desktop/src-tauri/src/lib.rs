@@ -197,6 +197,21 @@ fn do_open_tab(
 
     let registry_state = app.state::<Mutex<TabRegistry>>();
     let mut reg = registry_state.lock().unwrap();
+
+    // Re-check for a concurrently opened tab under the same lock that adds
+    // the new one: the first check above dropped its lock before this
+    // function read the file, so two overlapping opens of the same path
+    // (e.g. a double click on a linked-resource overlay) could both pass it.
+    if let Some(ref p) = resolved_path {
+        if let Some(existing) = reg.get_tab_by_path(&p.to_string_lossy()) {
+            let existing_id = existing.info.id.clone();
+            let existing_info = existing.info.clone();
+            drop(reg);
+            do_focus_tab(app, &existing_id)?;
+            return Ok(existing_info);
+        }
+    }
+
     let (tab_id, webview_label) = reg.generate_id();
 
     let label = if let Some(ref p) = resolved_path {
@@ -654,13 +669,37 @@ pub fn run() {
                 _ => {}
             });
 
+            let mut open_errors: Vec<String> = Vec::new();
             for path in initial_args {
-                let _ = do_open_tab(
+                if let Err(error) = do_open_tab(
                     &app.handle(),
                     Some(path.to_string_lossy().into_owned()),
                     None,
-                );
+                ) {
+                    eprintln!("Failed to open {}: {error}", path.display());
+                    open_errors.push(format!("{}: {error}", path.display()));
+                }
             }
+
+            if !open_errors.is_empty() {
+                app.dialog()
+                    .message(open_errors.join("\n"))
+                    .title("Could not open file")
+                    .kind(MessageDialogKind::Error)
+                    .show(|_| {});
+            }
+
+            // If nothing ended up open (no initial files, or every one of
+            // them failed), lay the shell out for the empty state rather
+            // than leaving it at the pre-open guess from `shell_height`.
+            let registry_state = app.state::<Mutex<TabRegistry>>();
+            let reg = registry_state.lock().unwrap();
+            if reg.active_tab_id.is_none() {
+                if let Some(win) = app.get_window("main") {
+                    let _ = do_resize_webviews(&app.handle(), &win, &reg);
+                }
+            }
+            drop(reg);
 
             Ok(())
         })
