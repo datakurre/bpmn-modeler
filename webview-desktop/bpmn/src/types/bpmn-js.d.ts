@@ -57,24 +57,11 @@ declare module "camunda-modeler-robot-plugin/dist/module" {
     export default mod;
 }
 
-declare module "bpmn-js-differ" {
-    export function diff(oldDefinitions: any, newDefinitions: any): any;
-}
-
 declare module "bpmn-moddle" {
     export class BpmnModdle {
         constructor(options?: any);
         fromXML(xml: string): Promise<{ rootElement: any }>;
     }
-}
-
-declare function acquireVsCodeApi(): any;
-
-declare module "lodash" {
-    export function debounce<T extends (...args: any[]) => any>(
-        callback: T,
-        wait?: number,
-    ): T;
 }
 
 declare module "diagram-js-minimap" {
