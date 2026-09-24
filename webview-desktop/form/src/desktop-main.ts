@@ -5,11 +5,11 @@ import "./styles/default.css";
 import { createEditor, exportSchema } from "./editor";
 import { focusNextTab, focusPreviousTab } from "../../shared/tab-cycle";
 import {
-    basenameOf,
     formatError,
     showDesktopStatus,
     updateDesktopStatus,
 } from "../../shared/desktop-editor";
+import { SaveController } from "../../shared/save-controller";
 
 interface TabDocument {
     tabId: string;
@@ -32,9 +32,28 @@ const emptySchema = JSON.stringify(
     2,
 );
 
-let filePath: string | null = null;
-let dirty = false;
-let hasBeenSaved = false;
+const saveController = new SaveController(
+    {
+        exportContent: async () => JSON.stringify(exportSchema(), null, 2),
+        writeDocument: (path, content) => invoke("write_document", { path, content }),
+        pickSavePath: () =>
+            saveFile({
+                defaultPath: "new.form",
+                filters: [{ name: "Form-JS forms", extensions: ["form"] }],
+            }).then((path) => path ?? null),
+        onStateChange: (state) => {
+            void invoke("update_tab_state", {
+                tabId,
+                dirty: state.dirty,
+                filePath: state.filePath ?? undefined,
+                hasBeenSaved: state.hasBeenSaved,
+            });
+            updateStatus();
+        },
+    },
+    { filePath: null, hasBeenSaved: false },
+);
+
 let initializing = true;
 
 window.addEventListener("load", () => {
@@ -56,14 +75,11 @@ window.addEventListener("click", (event) => {
 async function initialize(): Promise<void> {
     try {
         const doc = await invoke<TabDocument>("get_tab_document", { tabId });
-        filePath = doc.path;
-        hasBeenSaved = doc.hasBeenSaved;
+        saveController.setKnownFile(doc.path, doc.hasBeenSaved);
 
         createEditor(doc.content ?? emptySchema, () => {
             if (!initializing) {
-                dirty = true;
-                void invoke("update_tab_state", { tabId, dirty: true });
-                updateStatus();
+                saveController.markDirty();
             }
         });
         initializing = false;
@@ -97,30 +113,7 @@ window.addEventListener("keydown", (event) => {
 
 async function saveDocument(): Promise<void> {
     try {
-        if (!filePath) {
-            filePath =
-                (await saveFile({
-                    defaultPath: "new.form",
-                    filters: [{ name: "Form-JS forms", extensions: ["form"] }],
-                })) ?? null;
-        }
-
-        if (!filePath) return;
-
-        await invoke("write_document", {
-            path: filePath,
-            content: JSON.stringify(exportSchema(), null, 2),
-        });
-        dirty = false;
-        hasBeenSaved = true;
-
-        await invoke("update_tab_state", {
-            tabId,
-            dirty: false,
-            filePath,
-            hasBeenSaved: true,
-        });
-        updateStatus();
+        await saveController.save();
     } catch (error) {
         showStatus(`Unable to save form: ${formatError(error)}`);
     }
@@ -128,9 +121,7 @@ async function saveDocument(): Promise<void> {
 
 function updateStatus(): void {
     updateDesktopStatus({
-        filePath,
-        dirty,
-        hasBeenSaved,
+        ...saveController.getState(),
         defaultFilename: "Untitled.form",
     });
 }

@@ -24,11 +24,11 @@ import {
 import { createEvaluationPanel } from "../../../vendor/dmn-js-modeler/webview/src/evaluation-panel";
 import { focusNextTab, focusPreviousTab } from "../../shared/tab-cycle";
 import {
-    basenameOf,
     formatError,
     showDesktopStatus,
     updateDesktopStatus,
 } from "../../shared/desktop-editor";
+import { SaveController } from "../../shared/save-controller";
 
 interface TabDocument {
     tabId: string;
@@ -51,9 +51,28 @@ const emptyDmn = `<?xml version="1.0" encoding="UTF-8"?>
 </definitions>
 `;
 
-let filePath: string | null = null;
-let dirty = false;
-let hasBeenSaved = false;
+const saveController = new SaveController(
+    {
+        exportContent: exportDiagram,
+        writeDocument: (path, content) => invoke("write_document", { path, content }),
+        pickSavePath: () =>
+            saveFile({
+                defaultPath: "decision.dmn",
+                filters: [{ name: "DMN diagrams", extensions: ["dmn"] }],
+            }).then((path) => path ?? null),
+        onStateChange: (state) => {
+            void invoke("update_tab_state", {
+                tabId,
+                dirty: state.dirty,
+                filePath: state.filePath ?? undefined,
+                hasBeenSaved: state.hasBeenSaved,
+            });
+            updateStatus();
+        },
+    },
+    { filePath: null, hasBeenSaved: false },
+);
+
 let evaluationPanel: ReturnType<typeof createEvaluationPanel> | null = null;
 let initializing = true;
 
@@ -76,8 +95,7 @@ window.addEventListener("click", (event) => {
 async function initialize(): Promise<void> {
     try {
         const doc = await invoke<TabDocument>("get_tab_document", { tabId });
-        filePath = doc.path;
-        hasBeenSaved = doc.hasBeenSaved;
+        saveController.setKnownFile(doc.path, doc.hasBeenSaved);
 
         setupSplit();
         createModeler();
@@ -160,37 +178,12 @@ window.addEventListener("keydown", (event) => {
 });
 
 function markDirty(): void {
-    dirty = true;
-    void invoke("update_tab_state", { tabId, dirty: true });
-    updateStatus();
+    saveController.markDirty();
 }
 
 async function saveDocument(): Promise<void> {
     try {
-        let path = filePath;
-        if (!path) {
-            path =
-                (await saveFile({
-                    defaultPath: "decision.dmn",
-                    filters: [{ name: "DMN diagrams", extensions: ["dmn"] }],
-                })) ?? null;
-        }
-        if (!path) return;
-
-        const xml = await exportDiagram();
-        await invoke("write_document", { path, content: xml });
-
-        filePath = path;
-        dirty = false;
-        hasBeenSaved = true;
-
-        await invoke("update_tab_state", {
-            tabId,
-            dirty: false,
-            filePath: path,
-            hasBeenSaved: true,
-        });
-        updateStatus();
+        await saveController.save();
     } catch (error) {
         showStatus(`Unable to save DMN file: ${formatError(error)}`);
     }
@@ -198,9 +191,7 @@ async function saveDocument(): Promise<void> {
 
 function updateStatus(): void {
     updateDesktopStatus({
-        filePath,
-        dirty,
-        hasBeenSaved,
+        ...saveController.getState(),
         defaultFilename: "Untitled.dmn",
     });
 }

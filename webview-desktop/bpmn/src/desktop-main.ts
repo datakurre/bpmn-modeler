@@ -38,6 +38,7 @@ import {
     showDesktopStatus,
     updateDesktopStatus,
 } from "../../shared/desktop-editor";
+import { SaveController } from "../../shared/save-controller";
 
 interface TabDocument {
     tabId: string;
@@ -49,9 +50,27 @@ interface TabDocument {
 
 const tabId = new URLSearchParams(location.search).get("tabId") ?? "";
 
-let filePath: string | null = null;
-let dirty = false;
-let hasBeenSaved = false;
+const saveController = new SaveController(
+    {
+        exportContent: exportDiagram,
+        writeDocument: (path, content) => invoke("write_document", { path, content }),
+        pickSavePath: () =>
+            saveFile({
+                defaultPath: "diagram.bpmn",
+                filters: [{ name: "BPMN diagrams", extensions: ["bpmn"] }],
+            }).then((path) => path ?? null),
+        onStateChange: (state) => {
+            void invoke("update_tab_state", {
+                tabId,
+                dirty: state.dirty,
+                filePath: state.filePath ?? undefined,
+                hasBeenSaved: state.hasBeenSaved,
+            });
+            updateStatus();
+        },
+    },
+    { filePath: null, hasBeenSaved: false },
+);
 
 let scannedDirectory: string | null = null;
 let siblingFiles: Map<string, string> = new Map();
@@ -92,8 +111,7 @@ window.addEventListener("click", (event) => {
 async function initialize(): Promise<void> {
     try {
         const doc = await invoke<TabDocument>("get_tab_document", { tabId });
-        filePath = doc.path;
-        hasBeenSaved = doc.hasBeenSaved;
+        saveController.setKnownFile(doc.path, doc.hasBeenSaved);
 
         setBpmnlintConfig({
             extends: "bpmnlint:recommended",
@@ -124,8 +142,9 @@ async function initialize(): Promise<void> {
         document.body.classList.add("desktop-ready");
         updateStatus();
 
-        if (filePath) {
-            await discoverLinkedResources(filePath);
+        const initialPath = saveController.getState().filePath;
+        if (initialPath) {
+            await discoverLinkedResources(initialPath);
         }
     } catch (error) {
         showStatus(`Unable to open BPMN file: ${formatError(error)}`);
@@ -180,40 +199,16 @@ window.addEventListener("keydown", (event) => {
 });
 
 function markDirty(): void {
-    dirty = true;
-    void invoke("update_tab_state", { tabId, dirty: true });
-    updateStatus();
+    saveController.markDirty();
 }
 
 async function saveDocument(): Promise<void> {
+    const wasUnsaved = !saveController.getState().filePath;
     try {
-        let path = filePath;
-        if (!path) {
-            path =
-                (await saveFile({
-                    defaultPath: "diagram.bpmn",
-                    filters: [{ name: "BPMN diagrams", extensions: ["bpmn"] }],
-                })) ?? null;
-        }
-        if (!path) return;
+        await saveController.save();
 
-        const xml = await exportDiagram();
-        await invoke("write_document", { path, content: xml });
-
-        const wasUnsaved = !filePath;
-        filePath = path;
-        dirty = false;
-        hasBeenSaved = true;
-
-        await invoke("update_tab_state", {
-            tabId,
-            dirty: false,
-            filePath: path,
-            hasBeenSaved: true,
-        });
-        updateStatus();
-
-        if (wasUnsaved) {
+        const path = saveController.getState().filePath;
+        if (wasUnsaved && path) {
             await discoverLinkedResources(path);
         }
     } catch (error) {
@@ -329,9 +324,7 @@ async function autoLayout(): Promise<void> {
 
 function updateStatus(): void {
     updateDesktopStatus({
-        filePath,
-        dirty,
-        hasBeenSaved,
+        ...saveController.getState(),
         defaultFilename: "Untitled.bpmn",
     });
 }
