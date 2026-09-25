@@ -14,9 +14,7 @@ pub fn atomic_write(path: &Path, content: &[u8]) -> io::Result<()> {
     // Follow a symlinked destination so the link itself is kept and its
     // target's content is updated, not the link replaced with a plain file.
     let destination: PathBuf = match fs::symlink_metadata(path) {
-        Ok(meta) if meta.file_type().is_symlink() => {
-            fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf())
-        }
+        Ok(meta) if meta.file_type().is_symlink() => resolve_symlink_target(path)?,
         _ => path.to_path_buf(),
     };
 
@@ -63,6 +61,25 @@ pub fn atomic_write(path: &Path, content: &[u8]) -> io::Result<()> {
     }
 
     result
+}
+
+/// Resolves a symlink's real target, even when it's dangling (points at a
+/// path that doesn't currently exist — e.g. an unmounted share, or a target
+/// that was moved). `fs::canonicalize` requires every component to exist, so
+/// it fails for a dangling link; falling back to the link's own path in that
+/// case would let `fs::rename` below replace the link with a regular file
+/// instead of writing through it. Read the immediate target by hand instead.
+fn resolve_symlink_target(link: &Path) -> io::Result<PathBuf> {
+    if let Ok(canonical) = fs::canonicalize(link) {
+        return Ok(canonical);
+    }
+
+    let target = fs::read_link(link)?;
+    Ok(if target.is_absolute() {
+        target
+    } else {
+        link.parent().unwrap_or_else(|| Path::new(".")).join(target)
+    })
 }
 
 #[cfg(unix)]
@@ -112,6 +129,44 @@ mod tests {
         let meta = fs::symlink_metadata(&link_path).unwrap();
         assert!(meta.file_type().is_symlink(), "link should still be a symlink");
         assert_eq!(fs::read_to_string(&real_path).unwrap(), "new content");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn writes_through_a_dangling_absolute_symlink_without_replacing_it() {
+        use std::os::unix::fs::symlink;
+
+        let dir = tempfile::tempdir().unwrap();
+        // Never created: the link's target doesn't exist yet.
+        let missing_target = dir.path().join("missing.bpmn");
+        let link_path = dir.path().join("link.bpmn");
+        symlink(&missing_target, &link_path).unwrap();
+
+        atomic_write(&link_path, b"new content").unwrap();
+
+        let meta = fs::symlink_metadata(&link_path).unwrap();
+        assert!(meta.file_type().is_symlink(), "link should still be a symlink");
+        assert_eq!(fs::read_to_string(&missing_target).unwrap(), "new content");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn writes_through_a_dangling_relative_symlink_without_replacing_it() {
+        use std::os::unix::fs::symlink;
+
+        let dir = tempfile::tempdir().unwrap();
+        let link_path = dir.path().join("link.bpmn");
+        // A relative target resolves against the link's own directory.
+        symlink("missing.bpmn", &link_path).unwrap();
+
+        atomic_write(&link_path, b"new content").unwrap();
+
+        let meta = fs::symlink_metadata(&link_path).unwrap();
+        assert!(meta.file_type().is_symlink(), "link should still be a symlink");
+        assert_eq!(
+            fs::read_to_string(dir.path().join("missing.bpmn")).unwrap(),
+            "new content"
+        );
     }
 
     #[test]
