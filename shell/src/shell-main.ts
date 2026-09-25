@@ -1,5 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
+import { LogicalPosition } from "@tauri-apps/api/dpi";
 import { listen } from "@tauri-apps/api/event";
+import { Menu } from "@tauri-apps/api/menu";
 
 import "./shell.css";
 
@@ -29,7 +31,6 @@ let state: TabsPayload = { tabs: [], activeTabId: null };
 
 const tabsElement = document.getElementById("shell-tabs") as HTMLElement;
 const emptyElement = document.getElementById("shell-empty") as HTMLElement;
-const newMenu = document.getElementById("shell-new-menu") as HTMLElement;
 const newToggle = document.getElementById("shell-new-toggle") as HTMLButtonElement;
 
 function render(): void {
@@ -90,9 +91,27 @@ async function newFile(kind: EditorKind): Promise<void> {
     await invoke("open_tab", { kind });
 }
 
-function closeNewMenu(): void {
-    newMenu.hidden = true;
-    newToggle.setAttribute("aria-expanded", "false");
+// The shell is its own webview, only TAB_BAR_HEIGHT tall while an editor
+// tab is open, and the editor's webview sits directly below it. An HTML
+// dropdown can't paint outside its own webview, so it would be clipped
+// behind the editor; a native popup menu is drawn above every webview.
+let newMenu: Promise<Menu> | null = null;
+
+function getNewMenu(): Promise<Menu> {
+    newMenu ??= Menu.new({
+        items: (Object.keys(KIND_LABELS) as EditorKind[]).map((kind) => ({
+            id: `new-${kind}`,
+            text: KIND_LABELS[kind],
+            action: () => void newFile(kind),
+        })),
+    });
+    return newMenu;
+}
+
+async function showNewMenu(): Promise<void> {
+    const rect = newToggle.getBoundingClientRect();
+    const menu = await getNewMenu();
+    await menu.popup(new LogicalPosition(rect.left, rect.bottom));
 }
 
 document.getElementById("shell-open")?.addEventListener("click", () => void openFile());
@@ -108,22 +127,11 @@ document.getElementById("shell-quit")?.addEventListener("click", () => {
     void invoke("quit_app");
 });
 
-newToggle?.addEventListener("click", () => {
-    const isHidden = newMenu.hidden;
-    newMenu.hidden = !isHidden;
-    newToggle.setAttribute("aria-expanded", String(isHidden));
-});
-
-document.addEventListener("click", (event) => {
-    if (!newMenu.hidden && !newMenu.contains(event.target as Node) && event.target !== newToggle) {
-        closeNewMenu();
-    }
-});
+newToggle?.addEventListener("click", () => void showNewMenu());
 
 for (const button of document.querySelectorAll<HTMLButtonElement>("[data-kind]")) {
     button.addEventListener("click", () => {
         const kind = button.dataset.kind as EditorKind;
-        closeNewMenu();
         void newFile(kind);
     });
 }

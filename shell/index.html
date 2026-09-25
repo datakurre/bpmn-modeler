@@ -12,22 +12,14 @@
             <div class="shell-spacer" data-tauri-drag-region></div>
             <div class="shell-actions">
                 <button type="button" id="shell-open" title="Open file">Open</button>
-                <div class="shell-new">
-                    <button
-                        type="button"
-                        id="shell-new-toggle"
-                        title="New file"
-                        aria-haspopup="true"
-                        aria-expanded="false"
-                    >
-                        New&nbsp;&#9662;
-                    </button>
-                    <div class="shell-new-menu" id="shell-new-menu" hidden>
-                        <button type="button" data-kind="bpmn">BPMN diagram</button>
-                        <button type="button" data-kind="dmn">DMN diagram</button>
-                        <button type="button" data-kind="form">Form</button>
-                    </div>
-                </div>
+                <button
+                    type="button"
+                    id="shell-new-toggle"
+                    title="New file"
+                    aria-haspopup="menu"
+                >
+                    New&nbsp;&#9662;
+                </button>
             </div>
             <div class="shell-window-controls">
                 <button type="button" id="shell-minimize" aria-label="Minimize">&#8211;</button>
