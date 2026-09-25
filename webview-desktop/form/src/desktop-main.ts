@@ -8,13 +8,12 @@ import {
     showDesktopStatus,
     updateDesktopStatus,
 } from "../../shared/desktop-editor";
-import { SaveController } from "../../shared/save-controller";
+import { createDesktopSaveController } from "../../shared/desktop-save";
 import {
     getTabIdFromLocation,
     installCommonKeyboardHandlers,
     installDirtyQueryResponder,
     installShortcutsHelp,
-    reportTabDirty,
     type TabDocument,
 } from "../../shared/desktop-shell";
 
@@ -31,25 +30,15 @@ const emptySchema = JSON.stringify(
     2,
 );
 
-const saveController = new SaveController(
-    {
-        exportContent: async () => JSON.stringify(exportSchema(), null, 2),
-        writeDocument: (content) => invoke("write_document", { tabId, content }),
-        saveAs: (content) =>
-            invoke<string | null>("save_document_as", {
-                tabId,
-                content,
-                defaultName: "new.form",
-                filterName: "Form-JS forms",
-                extension: "form",
-            }),
-        onStateChange: (state) => {
-            reportTabDirty(tabId, state.dirty, showStatus);
-            updateStatus();
-        },
-    },
-    { filePath: null, hasBeenSaved: false },
-);
+const saveController = createDesktopSaveController({
+    tabId,
+    exportContent: async () => JSON.stringify(exportSchema(), null, 2),
+    defaultName: "new.form",
+    filterName: "Form-JS forms",
+    extension: "form",
+    onStatus: showStatus,
+    onStateChange: updateStatus,
+});
 
 let initializing = true;
 
