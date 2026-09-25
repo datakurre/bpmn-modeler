@@ -79,7 +79,7 @@ window.addEventListener("load", () => {
 });
 
 installShortcutsHelp();
-installDirtyQueryResponder(() => saveController.getState().dirty);
+installDirtyQueryResponder(tabId, () => saveController.getState().dirty);
 
 window.addEventListener("click", (event) => {
     const chooser = document.getElementById("desktop-tab-chooser");

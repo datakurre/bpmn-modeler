@@ -32,15 +32,34 @@ export function reportTabDirty(tabId: string, dirty: boolean, onError: (message:
     });
 }
 
+interface DirtyQueryPayload {
+    requestId: string;
+    tabId: string;
+}
+
 /**
  * Answers the backend's live dirty-state queries: close/quit can't rely on
  * the last `reportTabDirty` call having landed yet (it's a separate,
  * unordered IPC round trip), so instead they ask this tab directly and wait
  * briefly for the reply before deciding whether to confirm.
+ *
+ * Every editor webview shares the same event bus — `listen()` registers an
+ * `Any`-target listener that receives every `query-dirty` emit regardless of
+ * which webview the backend addressed it to — so this always checks the
+ * payload's `tabId` against its own and ignores a query meant for another
+ * tab, rather than answering for it.
  */
-export function installDirtyQueryResponder(getDirty: () => boolean): void {
-    void listen<string>("query-dirty", (event) => {
-        void invoke("report_dirty", { requestId: event.payload, dirty: getDirty() });
+export function installDirtyQueryResponder(tabId: string, getDirty: () => boolean): void {
+    void listen<DirtyQueryPayload>("query-dirty", (event) => {
+        if (event.payload.tabId !== tabId) return;
+        invoke("report_dirty", { requestId: event.payload.requestId, dirty: getDirty() }).catch(
+            () => {
+                // The backend's query already falls back to "assume dirty"
+                // when no reply arrives in time, so a failed reply here is
+                // no worse than a timeout — nothing more to do but avoid an
+                // unhandled rejection.
+            },
+        );
     });
 }
 

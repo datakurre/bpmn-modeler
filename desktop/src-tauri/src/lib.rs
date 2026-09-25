@@ -9,8 +9,8 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Mutex;
 use std::time::Duration;
 use tauri::{
-    AppHandle, Emitter, LogicalPosition, LogicalSize, Manager, WebviewBuilder, WebviewUrl, Window,
-    WindowBuilder,
+    AppHandle, Emitter, EventTarget, LogicalPosition, LogicalSize, Manager, WebviewBuilder,
+    WebviewUrl, Window, WindowBuilder,
 };
 use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
 use tokio::sync::oneshot;
@@ -394,6 +394,19 @@ type DirtyReplySenders = Mutex<HashMap<String, oneshot::Sender<bool>>>;
 
 static DIRTY_QUERY_COUNTER: AtomicU64 = AtomicU64::new(0);
 
+/// Payload for the `query-dirty` event. Every editor webview shares the same
+/// global event bus (`listen()` on the JS side registers an `Any` target
+/// that receives every emit regardless of which webview it's addressed to,
+/// and `Webview::emit`/`AppHandle::emit` broadcast to all of them too), so
+/// `tab_id` lets each editor recognize and ignore a query meant for a
+/// different tab even though it still receives the event.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct DirtyQueryPayload {
+    request_id: String,
+    tab_id: String,
+}
+
 /// Whether to treat a tab as dirty given the live reply from its webview, or
 /// `None` if it didn't answer in time (or there was nothing to ask).
 fn resolve_dirty_decision(live_reply: Option<bool>) -> bool {
@@ -403,8 +416,11 @@ fn resolve_dirty_decision(live_reply: Option<bool>) -> bool {
 /// Emits `query-dirty` to the given tab's webview and waits for its
 /// `report_dirty` reply, falling back to `resolve_dirty_decision`'s default
 /// if it doesn't answer within `DIRTY_QUERY_TIMEOUT` (or there's no such
-/// webview to ask).
-async fn query_tab_dirty(app: &AppHandle, webview_label: &str) -> bool {
+/// webview to ask). Also returns that default for a tab whose webview is
+/// still loading (its `installDirtyQueryResponder` hasn't run yet), so a
+/// freshly-opened tab shows up as dirty in a quit confirmation until it's
+/// ready to answer for itself.
+async fn query_tab_dirty(app: &AppHandle, tab_id: &str, webview_label: &str) -> bool {
     let request_id = format!(
         "dirty-query-{}",
         DIRTY_QUERY_COUNTER.fetch_add(1, Ordering::Relaxed)
@@ -416,10 +432,13 @@ async fn query_tab_dirty(app: &AppHandle, webview_label: &str) -> bool {
         senders.lock().unwrap().insert(request_id.clone(), tx);
     }
 
+    let payload = DirtyQueryPayload {
+        request_id: request_id.clone(),
+        tab_id: tab_id.to_string(),
+    };
     let emitted = app
-        .get_webview(webview_label)
-        .map(|wv| wv.emit("query-dirty", &request_id).is_ok())
-        .unwrap_or(false);
+        .emit_to(EventTarget::webview(webview_label), "query-dirty", &payload)
+        .is_ok();
 
     let live_reply = if emitted {
         tokio::time::timeout(DIRTY_QUERY_TIMEOUT, rx)
@@ -440,19 +459,33 @@ async fn query_tab_dirty(app: &AppHandle, webview_label: &str) -> bool {
 }
 
 /// Live dirty state (see `query_tab_dirty`) for every open tab's label.
+/// Queries run concurrently — each is spawned as its own task before any is
+/// awaited — so quitting with several tabs open waits at most one
+/// `DIRTY_QUERY_TIMEOUT`, not one per tab.
 async fn live_dirty_tab_labels(app: &AppHandle) -> Vec<String> {
-    let tabs: Vec<(String, String)> = {
+    let tabs: Vec<(String, String, String)> = {
         let registry_state = app.state::<Mutex<TabRegistry>>();
         let reg = registry_state.lock().unwrap();
         reg.tabs
             .iter()
-            .map(|t| (t.webview_label.clone(), t.info.label.clone()))
+            .map(|t| (t.info.id.clone(), t.webview_label.clone(), t.info.label.clone()))
             .collect()
     };
 
+    let queries: Vec<_> = tabs
+        .into_iter()
+        .map(|(tab_id, webview_label, label)| {
+            let app = app.clone();
+            let handle = tauri::async_runtime::spawn(async move {
+                query_tab_dirty(&app, &tab_id, &webview_label).await
+            });
+            (label, handle)
+        })
+        .collect();
+
     let mut dirty_labels = Vec::new();
-    for (webview_label, label) in tabs {
-        if query_tab_dirty(app, &webview_label).await {
+    for (label, handle) in queries {
+        if handle.await.unwrap_or(true) {
             dirty_labels.push(label);
         }
     }
@@ -504,7 +537,7 @@ async fn do_close_tab_with_confirmation(
             (tab.webview_label.clone(), tab.info.label.clone())
         };
 
-        let dirty = query_tab_dirty(app, &webview_label).await;
+        let dirty = query_tab_dirty(app, tab_id, &webview_label).await;
 
         if dirty && !confirm_discard_blocking(app, discard_tab_message(&label)) {
             return Ok(());

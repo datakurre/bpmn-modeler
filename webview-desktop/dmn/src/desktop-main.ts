@@ -67,7 +67,7 @@ window.addEventListener("load", () => {
 });
 
 installShortcutsHelp();
-installDirtyQueryResponder(() => saveController.getState().dirty);
+installDirtyQueryResponder(tabId, () => saveController.getState().dirty);
 
 async function initialize(): Promise<void> {
     try {
