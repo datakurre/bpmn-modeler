@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import { formatError } from "./desktop-editor";
 import { focusNextTab, focusPreviousTab } from "./tab-cycle";
 
 export type EditorKind = "bpmn" | "dmn" | "form";
@@ -14,6 +15,20 @@ export interface TabDocument {
 /** The tab this editor webview was opened for, from its `?tabId=` query param. */
 export function getTabIdFromLocation(): string {
     return new URLSearchParams(location.search).get("tabId") ?? "";
+}
+
+/**
+ * Push a tab's dirty flag to the backend (so the shell's tab dot and the
+ * close/quit confirmation see it). This is inherently best-effort — it's a
+ * separate IPC round trip from the shell's close/quit calls, on a different
+ * webview's channel, so nothing here guarantees it lands before a same-instant
+ * close or quit — but a failure should surface rather than vanish as an
+ * unhandled rejection.
+ */
+export function reportTabDirty(tabId: string, dirty: boolean, onError: (message: string) => void): void {
+    invoke("update_tab_state", { tabId, dirty }).catch((error: unknown) => {
+        onError(`Unable to sync tab state: ${formatError(error)}`);
+    });
 }
 
 export function showShortcutsHelp(x: number, y: number): void {

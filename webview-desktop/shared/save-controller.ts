@@ -57,11 +57,21 @@ export class SaveController {
         this.hasBeenSaved = hasBeenSaved;
     }
 
-    /** Record that the document changed, e.g. from a command-stack event. */
+    /**
+     * Record that the document changed, e.g. from a command-stack event.
+     * `changeGeneration` advances on every call (that's what a save's dirty
+     * computation compares against), but `onStateChange` — which triggers an
+     * `update_tab_state` IPC round trip in every editor — only fires on the
+     * clean-to-dirty transition, since later edits before the next save
+     * don't change what the tab's dirty flag should show.
+     */
     markDirty(): void {
         this.changeGeneration += 1;
+        const wasDirty = this.dirty;
         this.dirty = true;
-        this.callbacks.onStateChange(this.getState());
+        if (!wasDirty) {
+            this.callbacks.onStateChange(this.getState());
+        }
     }
 
     /**

@@ -33,6 +33,26 @@ describe("SaveController", () => {
         expect(controller.getState().dirty).toBe(true);
     });
 
+    it("only notifies onStateChange once across repeated markDirty calls while already dirty", () => {
+        const states: SaveState[] = [];
+        const controller = new SaveController(
+            {
+                exportContent: async () => "content",
+                writeDocument: async () => {},
+                saveAs: async () => null,
+                onStateChange: (s) => states.push(s),
+            },
+            { filePath: "/tmp/doc.bpmn", hasBeenSaved: true },
+        );
+
+        controller.markDirty();
+        controller.markDirty();
+        controller.markDirty();
+
+        expect(states).toHaveLength(1);
+        expect(controller.getState().dirty).toBe(true);
+    });
+
     it("leaves dirty=false when nothing changes during the save", async () => {
         const controller = new SaveController(
             {

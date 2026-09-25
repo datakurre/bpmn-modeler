@@ -42,6 +42,7 @@ import {
     getTabIdFromLocation,
     installCommonKeyboardHandlers,
     installShortcutsHelp,
+    reportTabDirty,
     type TabDocument,
 } from "../../shared/desktop-shell";
 
@@ -60,7 +61,7 @@ const saveController = new SaveController(
                 extension: "bpmn",
             }),
         onStateChange: (state) => {
-            void invoke("update_tab_state", { tabId, dirty: state.dirty });
+            reportTabDirty(tabId, state.dirty, showStatus);
             updateStatus();
         },
     },
