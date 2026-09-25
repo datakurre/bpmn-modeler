@@ -160,6 +160,42 @@ describe("SaveController", () => {
         expect(controller.getState().filePath).toBeNull();
     });
 
+    it("does not drop a later queued save after an earlier, unrelated Save As was cancelled", async () => {
+        const saveDeferred = deferred<string | null>();
+        let call = 0;
+        const saveAs = vi.fn(async () => {
+            call += 1;
+            if (call === 1) return null; // first Ctrl+S: cancelled, nothing queued behind it
+            return saveDeferred.promise; // second Ctrl+S: stays pending until resolved below
+        });
+        const writeDocument = vi.fn(async () => {});
+
+        const controller = new SaveController(
+            {
+                exportContent: async () => "content",
+                writeDocument,
+                saveAs,
+                onStateChange: () => {},
+            },
+            { filePath: null, hasBeenSaved: false },
+        );
+
+        // First Ctrl+S: cancelled, no follow-up queued behind it.
+        await controller.save();
+
+        // Second Ctrl+S: starts a Save As that stays pending...
+        const second = controller.save();
+        // ...an edit happens, and a third Ctrl+S queues a follow-up behind it.
+        controller.markDirty();
+        const third = controller.save();
+
+        saveDeferred.resolve("/tmp/new.bpmn");
+        await Promise.all([second, third]);
+
+        expect(writeDocument).toHaveBeenCalledTimes(1);
+        expect(controller.getState().dirty).toBe(false);
+    });
+
     it("leaves dirty and filePath unchanged when saveAs fails", async () => {
         const states: SaveState[] = [];
         const controller = new SaveController(
