@@ -102,6 +102,64 @@ describe("SaveController", () => {
         expect(maxConcurrentWrites).toBeLessThanOrEqual(1);
     });
 
+    it("runs a queued save that has new changes without ever overlapping the first write", async () => {
+        const writes: string[] = [];
+        let concurrentWrites = 0;
+        let maxConcurrentWrites = 0;
+        const firstWrite = deferred<void>();
+        let call = 0;
+        const writeDocument = vi.fn(async (content: string) => {
+            concurrentWrites += 1;
+            maxConcurrentWrites = Math.max(maxConcurrentWrites, concurrentWrites);
+            writes.push(content);
+            call += 1;
+            if (call === 1) await firstWrite.promise;
+            concurrentWrites -= 1;
+        });
+
+        const controller = new SaveController(
+            {
+                exportContent: async () => (call === 0 ? "v1" : "v2"),
+                writeDocument,
+                saveAs: async () => null,
+                onStateChange: () => {},
+            },
+            { filePath: "/tmp/doc.bpmn", hasBeenSaved: true },
+        );
+
+        const first = controller.save();
+        controller.markDirty(); // a real change queued behind the first save
+        const second = controller.save();
+
+        firstWrite.resolve();
+        await Promise.all([first, second]);
+
+        expect(writeDocument).toHaveBeenCalledTimes(2);
+        expect(writes).toEqual(["v1", "v2"]);
+        expect(maxConcurrentWrites).toBeLessThanOrEqual(1);
+    });
+
+    it("drops a queued follow-up instead of reopening a cancelled Save As dialog", async () => {
+        const saveAs = vi.fn(async () => null);
+        const controller = new SaveController(
+            {
+                exportContent: async () => "content",
+                writeDocument: async () => {},
+                saveAs,
+                onStateChange: () => {},
+            },
+            { filePath: null, hasBeenSaved: false },
+        );
+
+        const first = controller.save();
+        const second = controller.save();
+
+        await Promise.all([first, second]);
+
+        expect(saveAs).toHaveBeenCalledTimes(1);
+        expect(controller.getState().filePath).toBeNull();
+    });
+
     it("leaves dirty and filePath unchanged when saveAs fails", async () => {
         const states: SaveState[] = [];
         const controller = new SaveController(

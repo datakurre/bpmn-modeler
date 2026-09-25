@@ -24,16 +24,28 @@ export interface SaveControllerCallbacks {
 /**
  * Coordinates saving a single document: tracks whether edits made during an
  * in-flight write are still unsaved once it completes, and serializes
- * concurrent save() calls so a double Ctrl+S can't open two path dialogs or
- * run two overlapping writes.
+ * concurrent save() calls — via one `pending` chain rather than separate
+ * in-flight/queued promises, so there's no window where a call in between
+ * would see nothing pending and start an overlapping write — so a double
+ * Ctrl+S can't open two path dialogs or run two overlapping writes. A
+ * follow-up save queued behind one that's already covered everything (or
+ * whose Save As dialog was cancelled) is dropped rather than run.
  */
 export class SaveController {
     private filePath: string | null;
     private hasBeenSaved: boolean;
     private dirty = false;
     private changeGeneration = 0;
-    private inFlight: Promise<void> | null = null;
-    private queued: Promise<void> | null = null;
+
+    /** Non-null from the moment a save is requested until the last save
+     * queued behind it (if any) has finished — so a call arriving at any
+     * point in between always joins this instead of starting a fresh write. */
+    private pending: Promise<void> | null = null;
+    /** True once a follow-up save has been queued behind the current one. */
+    private followUpQueued = false;
+    /** Set when a Save As dialog is cancelled, so a queued follow-up (which
+     * would just reopen the same dialog) is dropped instead of run. */
+    private dropQueuedFollowUp = false;
 
     constructor(
         private readonly callbacks: SaveControllerCallbacks,
@@ -75,30 +87,55 @@ export class SaveController {
     }
 
     /**
-     * Save the document. If a save is already running, this queues exactly
-     * one follow-up save (further overlapping calls join that same queued
-     * save) instead of starting a second write immediately.
+     * Save the document. If a save is already running or queued, this joins
+     * that same chain — queuing at most one follow-up — instead of starting
+     * a second, possibly-overlapping write.
      */
     save(): Promise<void> {
-        if (this.inFlight) {
-            if (!this.queued) {
-                this.queued = this.inFlight
-                    .catch(() => {})
-                    .then(() => {
-                        this.queued = null;
-                        return this.runSave();
-                    });
+        if (this.pending) {
+            if (!this.followUpQueued) {
+                this.followUpQueued = true;
+                this.pending = this.pending.then(
+                    () => this.runQueued(),
+                    () => this.runQueued(),
+                );
             }
-            return this.queued;
+            return this.pending;
         }
-        return this.runSave();
+
+        this.pending = this.runGuarded();
+        return this.pending;
     }
 
-    private runSave(): Promise<void> {
-        this.inFlight = this.performSave().finally(() => {
-            this.inFlight = null;
+    private runGuarded(): Promise<void> {
+        return this.performSave().finally(() => {
+            if (!this.followUpQueued) {
+                this.pending = null;
+            }
         });
-        return this.inFlight;
+    }
+
+    /**
+     * Runs the one save queued behind the one that just finished — unless
+     * that save already covered everything (nothing was dirty by the time
+     * it finished) or its dialog was cancelled, in which case there's
+     * nothing new to write and no dialog to reopen.
+     */
+    private runQueued(): Promise<void> {
+        this.followUpQueued = false;
+
+        if (this.dropQueuedFollowUp) {
+            this.dropQueuedFollowUp = false;
+            this.pending = null;
+            return Promise.resolve();
+        }
+
+        if (!this.dirty) {
+            this.pending = null;
+            return Promise.resolve();
+        }
+
+        return this.runGuarded();
     }
 
     private async performSave(): Promise<void> {
@@ -109,7 +146,13 @@ export class SaveController {
             await this.callbacks.writeDocument(content);
         } else {
             const path = await this.callbacks.saveAs(content);
-            if (!path) return;
+            if (!path) {
+                // Cancelling the dialog once almost always means "not now"
+                // for a queued follow-up too, which would otherwise reopen
+                // the very same dialog immediately.
+                this.dropQueuedFollowUp = true;
+                return;
+            }
             this.filePath = path;
         }
 
