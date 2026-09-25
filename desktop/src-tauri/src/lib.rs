@@ -390,9 +390,10 @@ fn dirty_tab_labels(app: &AppHandle) -> Vec<String> {
     reg.dirty_tab_labels()
 }
 
-/// Show a blocking discard/cancel dialog. Only safe to call off the main
-/// thread (e.g. from a `#[tauri::command]` handler, never from
-/// `on_window_event`).
+/// Show a blocking discard/cancel dialog. Only safe to call off the platform
+/// event-loop thread: from an `async fn` `#[tauri::command]` handler (Tauri
+/// runs those on the async runtime), never from a sync command handler or
+/// from `on_window_event`, both of which run on that thread.
 fn confirm_discard_blocking(app: &AppHandle, message: String) -> bool {
     app.dialog()
         .message(message)
@@ -406,7 +407,7 @@ fn confirm_discard_blocking(app: &AppHandle, message: String) -> bool {
 }
 
 /// Same as `confirm_discard_blocking`, with a "Quit Anyway" affirmative
-/// button instead of "Discard". Also only safe off the main thread.
+/// button instead of "Discard". Same off-event-loop-thread requirement.
 fn confirm_quit_blocking(app: &AppHandle, message: String) -> bool {
     app.dialog()
         .message(message)
@@ -492,8 +493,12 @@ fn open_tab(
 /// Shows a native "Open" dialog and opens whatever file is picked, entirely
 /// in Rust — a webview never gets to name an arbitrary path here, unlike
 /// `open_tab`'s `path` argument, which is guarded but still webview-supplied.
+///
+/// `async` so Tauri runs it on the async runtime instead of the platform
+/// event loop: `blocking_pick_file()` below must not run on the same thread
+/// that pumps that loop, or the dialog (which needs the loop) deadlocks it.
 #[tauri::command]
-fn pick_and_open_file(app: AppHandle) -> Result<Option<TabInfo>, String> {
+async fn pick_and_open_file(app: AppHandle) -> Result<Option<TabInfo>, String> {
     let picked = app
         .dialog()
         .file()
@@ -516,8 +521,11 @@ fn focus_tab(app: AppHandle, tab_id: String) -> Result<(), String> {
     do_focus_tab(&app, &tab_id)
 }
 
+/// `async` for the same reason as `pick_and_open_file`:
+/// `do_close_tab_with_confirmation` can call a `blocking_show()` dialog, which
+/// must not run on the platform event-loop thread.
 #[tauri::command]
-fn close_tab(app: AppHandle, tab_id: String, force: Option<bool>) -> Result<(), String> {
+async fn close_tab(app: AppHandle, tab_id: String, force: Option<bool>) -> Result<(), String> {
     do_close_tab_with_confirmation(&app, &tab_id, force.unwrap_or(false))
 }
 
@@ -560,8 +568,11 @@ fn write_document(app: AppHandle, tab_id: String, content: String) -> Result<(),
 /// Shows a native "Save As" dialog and, if a path was chosen, writes
 /// `content` to it and records it on the tab. The path never passes through
 /// the webview: it comes straight from the dialog into this same command.
+///
+/// `async` for the same reason as `pick_and_open_file`: `blocking_save_file()`
+/// must not run on the platform event-loop thread.
 #[tauri::command]
-fn save_document_as(
+async fn save_document_as(
     app: AppHandle,
     tab_id: String,
     content: String,
@@ -666,8 +677,12 @@ fn maximize_window(app: AppHandle) -> Result<(), String> {
     Ok(())
 }
 
+/// `async` for the same reason as `pick_and_open_file`: `confirm_quit_blocking`
+/// calls `blocking_show()`, which must not run on the platform event-loop
+/// thread — unlike the `CloseRequested` handler in `run()` below, which
+/// already runs on that thread and uses the dialog's non-blocking `show()`.
 #[tauri::command]
-fn quit_app(app: AppHandle) {
+async fn quit_app(app: AppHandle) {
     let dirty_labels = dirty_tab_labels(&app);
     match quit_confirmation_message(&dirty_labels) {
         None => app.exit(0),
