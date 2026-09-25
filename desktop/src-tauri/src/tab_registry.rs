@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 pub const TAB_BAR_HEIGHT: f64 = 36.0;
 
@@ -99,18 +99,24 @@ impl TabRegistry {
         self.tabs.iter_mut().find(|t| t.info.id == id)
     }
 
-    /// True if `path` may be read by a file IPC command triggered from a
-    /// webview: it resolves (after following symlinks and `..`) either to
-    /// an already-registered tab's own file, or to a file directly inside
-    /// that tab's directory (the case for linked BPMN resources opened by
-    /// clicking an overlay). A symlink whose real target lives outside
-    /// that directory is rejected even if the link itself lives inside it.
-    pub fn is_path_allowed(&self, path: &Path) -> bool {
-        let Ok(canonical) = path.canonicalize() else {
-            return false;
-        };
+    /// Returns the canonicalized form of `path` if a file IPC command
+    /// triggered from a webview may read it: it resolves (after following
+    /// symlinks and `..`) either to an already-registered tab's own file,
+    /// or to a file directly inside that tab's directory (the case for
+    /// linked BPMN resources opened by clicking an overlay). A symlink
+    /// whose real target lives outside that directory is rejected even if
+    /// the link itself lives inside it.
+    ///
+    /// Callers must open/read the returned canonical path, not the
+    /// webview-supplied one this was called with: resolving and checking
+    /// it here, then having the caller separately re-resolve the original
+    /// string to actually open it, would leave a window for the checked
+    /// and the opened path to no longer be the same file (e.g. a sibling
+    /// swapped for a symlink between the two resolutions).
+    pub fn resolve_allowed_path(&self, path: &Path) -> Option<PathBuf> {
+        let canonical = path.canonicalize().ok()?;
 
-        self.tabs.iter().any(|tab| {
+        let is_allowed = self.tabs.iter().any(|tab| {
             let Some(tab_path) = tab.info.file_path.as_deref().map(Path::new) else {
                 return false;
             };
@@ -126,7 +132,9 @@ impl TabRegistry {
                 (Some(allowed_dir), Some(candidate_dir)) => allowed_dir == candidate_dir,
                 _ => false,
             }
-        })
+        });
+
+        is_allowed.then_some(canonical)
     }
 
     /// Labels of every tab with unsaved changes, in tab order.
@@ -366,7 +374,7 @@ mod tests {
     }
 
     #[test]
-    fn is_path_allowed_permits_a_tabs_own_file() {
+    fn resolve_allowed_path_permits_a_tabs_own_file() {
         let dir = tempfile::tempdir().unwrap();
         let file_path = dir.path().join("diagram.bpmn");
         std::fs::write(&file_path, "content").unwrap();
@@ -379,11 +387,14 @@ mod tests {
         );
         registry.add_tab(tab);
 
-        assert!(registry.is_path_allowed(&file_path));
+        assert_eq!(
+            registry.resolve_allowed_path(&file_path),
+            Some(file_path.canonicalize().unwrap())
+        );
     }
 
     #[test]
-    fn is_path_allowed_permits_a_sibling_in_the_same_directory() {
+    fn resolve_allowed_path_permits_a_sibling_in_the_same_directory() {
         let dir = tempfile::tempdir().unwrap();
         let open_path = dir.path().join("diagram.bpmn");
         let sibling_path = dir.path().join("called.bpmn");
@@ -398,11 +409,14 @@ mod tests {
         );
         registry.add_tab(tab);
 
-        assert!(registry.is_path_allowed(&sibling_path));
+        assert_eq!(
+            registry.resolve_allowed_path(&sibling_path),
+            Some(sibling_path.canonicalize().unwrap())
+        );
     }
 
     #[test]
-    fn is_path_allowed_rejects_a_dot_dot_traversal_out_of_the_directory() {
+    fn resolve_allowed_path_rejects_a_dot_dot_traversal_out_of_the_directory() {
         let dir = tempfile::tempdir().unwrap();
         let open_path = dir.path().join("diagram.bpmn");
         std::fs::write(&open_path, "content").unwrap();
@@ -426,12 +440,12 @@ mod tests {
         );
         registry.add_tab(tab);
 
-        assert!(!registry.is_path_allowed(&traversal_path));
+        assert_eq!(registry.resolve_allowed_path(&traversal_path), None);
     }
 
     #[cfg(unix)]
     #[test]
-    fn is_path_allowed_rejects_a_symlink_pointing_outside_the_directory() {
+    fn resolve_allowed_path_rejects_a_symlink_pointing_outside_the_directory() {
         use std::os::unix::fs::symlink;
 
         let dir = tempfile::tempdir().unwrap();
@@ -455,11 +469,11 @@ mod tests {
         );
         registry.add_tab(tab);
 
-        assert!(!registry.is_path_allowed(&link_path));
+        assert_eq!(registry.resolve_allowed_path(&link_path), None);
     }
 
     #[test]
-    fn is_path_allowed_rejects_an_unrelated_path() {
+    fn resolve_allowed_path_rejects_an_unrelated_path() {
         let dir = tempfile::tempdir().unwrap();
         let open_path = dir.path().join("diagram.bpmn");
         std::fs::write(&open_path, "content").unwrap();
@@ -476,17 +490,17 @@ mod tests {
         );
         registry.add_tab(tab);
 
-        assert!(!registry.is_path_allowed(&unrelated_file));
+        assert_eq!(registry.resolve_allowed_path(&unrelated_file), None);
     }
 
     #[test]
-    fn is_path_allowed_rejects_when_no_tabs_are_open() {
+    fn resolve_allowed_path_rejects_when_no_tabs_are_open() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("diagram.bpmn");
         std::fs::write(&path, "content").unwrap();
 
         let registry = TabRegistry::new();
-        assert!(!registry.is_path_allowed(&path));
+        assert_eq!(registry.resolve_allowed_path(&path), None);
     }
 
     #[test]

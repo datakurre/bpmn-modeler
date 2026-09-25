@@ -148,28 +148,20 @@ fn do_resize_webviews(app: &AppHandle, window: &Window, registry: &TabRegistry) 
     Ok(())
 }
 
+/// `path`, when given, must already be fully resolved: an absolute,
+/// caller-trusted path (a command-line argument, or one picked from a native
+/// dialog), or the exact canonical `PathBuf` `TabRegistry::resolve_allowed_path`
+/// approved. This function does no further resolution or path-allow
+/// checking of its own, so it must never receive a webview-supplied string
+/// straight from IPC — the `open_tab` command resolves and checks first.
 fn do_open_tab(
     app: &AppHandle,
-    path: Option<String>,
+    path: Option<PathBuf>,
     kind_str: Option<String>,
 ) -> Result<TabInfo, String> {
     let window = app.get_window("main").ok_or("Main window not found")?;
 
-    let resolved_path = path.as_ref().map(|p| resolve_launch_path(PathBuf::from(p)));
-
-    if let Some(ref p) = resolved_path {
-        let registry_state = app.state::<Mutex<TabRegistry>>();
-        let reg = registry_state.lock().unwrap();
-        if let Some(existing) = reg.get_tab_by_path(&p.to_string_lossy()) {
-            let existing_id = existing.info.id.clone();
-            let existing_info = existing.info.clone();
-            drop(reg);
-            do_focus_tab(app, &existing_id)?;
-            return Ok(existing_info);
-        }
-    }
-
-    let kind = if let Some(ref p) = resolved_path {
+    let kind = if let Some(ref p) = path {
         EditorKind::from_path(p)
             .ok_or_else(|| format!("Unsupported file extension: {}", p.display()))?
     } else if let Some(k) = kind_str {
@@ -183,7 +175,7 @@ fn do_open_tab(
         EditorKind::Bpmn
     };
 
-    let (content, has_been_saved) = if let Some(ref p) = resolved_path {
+    let (content, has_been_saved) = if let Some(ref p) = path {
         if p.exists() {
             let text = fs::read_to_string(p)
                 .map_err(|e| format!("Failed to read {}: {e}", p.display()))?;
@@ -198,11 +190,10 @@ fn do_open_tab(
     let registry_state = app.state::<Mutex<TabRegistry>>();
     let mut reg = registry_state.lock().unwrap();
 
-    // Re-check for a concurrently opened tab under the same lock that adds
-    // the new one: the first check above dropped its lock before this
-    // function read the file, so two overlapping opens of the same path
-    // (e.g. a double click on a linked-resource overlay) could both pass it.
-    if let Some(ref p) = resolved_path {
+    // Check for an already-open tab under the same lock that adds the new
+    // one, so two overlapping opens of the same path (e.g. a double click
+    // on a linked-resource overlay) can't both add a tab.
+    if let Some(ref p) = path {
         if let Some(existing) = reg.get_tab_by_path(&p.to_string_lossy()) {
             let existing_id = existing.info.id.clone();
             let existing_info = existing.info.clone();
@@ -214,7 +205,7 @@ fn do_open_tab(
 
     let (tab_id, webview_label) = reg.generate_id();
 
-    let label = if let Some(ref p) = resolved_path {
+    let label = if let Some(ref p) = path {
         p.file_name()
             .map(|n| n.to_string_lossy().into_owned())
             .unwrap_or_else(|| "diagram".into())
@@ -257,7 +248,7 @@ fn do_open_tab(
     let tab_info = TabInfo {
         id: tab_id.clone(),
         kind,
-        file_path: resolved_path.map(|p| p.to_string_lossy().into_owned()),
+        file_path: path.map(|p| p.to_string_lossy().into_owned()),
         label,
         dirty: false,
         has_been_saved,
@@ -475,19 +466,27 @@ fn open_tab(
     path: Option<String>,
     kind: Option<String>,
 ) -> Result<TabInfo, String> {
-    if let Some(ref p) = path {
-        let resolved = resolve_launch_path(PathBuf::from(p));
-        let registry_state = app.state::<Mutex<TabRegistry>>();
-        let reg = registry_state.lock().unwrap();
-        if !reg.is_path_allowed(&resolved) {
-            return Err(format!(
-                "\"{}\" is neither an already-open file nor a sibling of one",
-                resolved.display()
-            ));
+    let resolved_path = match path {
+        Some(ref p) => {
+            let resolved = resolve_launch_path(PathBuf::from(p));
+            let registry_state = app.state::<Mutex<TabRegistry>>();
+            let reg = registry_state.lock().unwrap();
+            // Use the exact canonical path this approves — never
+            // re-resolve the webview-supplied string separately, which
+            // would leave a window for the checked and the opened path to
+            // no longer be the same file.
+            let Some(canonical) = reg.resolve_allowed_path(&resolved) else {
+                return Err(format!(
+                    "\"{}\" is neither an already-open file nor a sibling of one",
+                    resolved.display()
+                ));
+            };
+            Some(canonical)
         }
-    }
+        None => None,
+    };
 
-    do_open_tab(&app, path, kind)
+    do_open_tab(&app, resolved_path, kind)
 }
 
 /// Shows a native "Open" dialog and opens whatever file is picked, entirely
@@ -513,7 +512,7 @@ async fn pick_and_open_file(app: AppHandle) -> Result<Option<TabInfo>, String> {
     };
     let path = file_path.into_path().map_err(|e| e.to_string())?;
 
-    do_open_tab(&app, Some(path.to_string_lossy().into_owned()), None).map(Some)
+    do_open_tab(&app, Some(path), None).map(Some)
 }
 
 #[tauri::command]
@@ -775,11 +774,7 @@ pub fn run() {
 
             let mut open_errors: Vec<String> = Vec::new();
             for path in initial_args {
-                if let Err(error) = do_open_tab(
-                    &app.handle(),
-                    Some(path.to_string_lossy().into_owned()),
-                    None,
-                ) {
+                if let Err(error) = do_open_tab(&app.handle(), Some(path.clone()), None) {
                     eprintln!("Failed to open {}: {error}", path.display());
                     open_errors.push(format!("{}: {error}", path.display()));
                 }
