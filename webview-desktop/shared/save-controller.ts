@@ -148,9 +148,15 @@ export class SaveController {
             const path = await this.callbacks.saveAs(content);
             if (!path) {
                 // Cancelling the dialog once almost always means "not now"
-                // for a queued follow-up too, which would otherwise reopen
-                // the very same dialog immediately.
-                this.dropQueuedFollowUp = true;
+                // for a follow-up queued behind THIS save too, which would
+                // otherwise reopen the very same dialog immediately. Only set
+                // this when a follow-up actually exists — dropQueuedFollowUp
+                // is cleared solely inside runQueued(), so setting it
+                // unconditionally here would leak past a cancel with nothing
+                // queued and wrongly drop the next, unrelated queued save.
+                if (this.followUpQueued) {
+                    this.dropQueuedFollowUp = true;
+                }
                 return;
             }
             this.filePath = path;

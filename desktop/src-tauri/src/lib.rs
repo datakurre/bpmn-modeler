@@ -2,14 +2,18 @@ mod atomic_write;
 mod tab_registry;
 
 use serde::Serialize;
+use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Mutex;
+use std::time::Duration;
 use tauri::{
-    AppHandle, Emitter, LogicalPosition, LogicalSize, Manager, WebviewBuilder, WebviewUrl, Window,
-    WindowBuilder,
+    AppHandle, Emitter, EventTarget, LogicalPosition, LogicalSize, Manager, WebviewBuilder,
+    WebviewUrl, Window, WindowBuilder,
 };
 use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
+use tokio::sync::oneshot;
 
 pub use tab_registry::{EditorKind, TabInfo, TabRegistry, TabState, TAB_BAR_HEIGHT};
 
@@ -375,10 +379,117 @@ fn quit_confirmation_message(dirty_labels: &[String]) -> Option<String> {
     ))
 }
 
-fn dirty_tab_labels(app: &AppHandle) -> Vec<String> {
-    let registry_state = app.state::<Mutex<TabRegistry>>();
-    let reg = registry_state.lock().unwrap();
-    reg.dirty_tab_labels()
+/// How long to wait for an editor webview to report its live dirty state
+/// before assuming the worst. The backend's own cached `TabInfo.dirty` can
+/// trail the editor's real state by one `update_tab_state` IPC round trip
+/// (see `report_dirty`'s callers below for why that's not good enough to
+/// gate a close/quit confirmation on), so close/quit ask the tab itself
+/// instead. Missing a confirmation (closing unsaved work silently) is worse
+/// than one extra dialog on a hung or crashed webview, so a missing reply
+/// defaults to "dirty".
+const DIRTY_QUERY_TIMEOUT: Duration = Duration::from_millis(500);
+
+/// Senders waiting for a `report_dirty` reply, keyed by request id.
+type DirtyReplySenders = Mutex<HashMap<String, oneshot::Sender<bool>>>;
+
+static DIRTY_QUERY_COUNTER: AtomicU64 = AtomicU64::new(0);
+
+/// Payload for the `query-dirty` event. Every editor webview shares the same
+/// global event bus (`listen()` on the JS side registers an `Any` target
+/// that receives every emit regardless of which webview it's addressed to,
+/// and `Webview::emit`/`AppHandle::emit` broadcast to all of them too), so
+/// `tab_id` lets each editor recognize and ignore a query meant for a
+/// different tab even though it still receives the event.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct DirtyQueryPayload {
+    request_id: String,
+    tab_id: String,
+}
+
+/// Whether to treat a tab as dirty given the live reply from its webview, or
+/// `None` if it didn't answer in time (or there was nothing to ask).
+fn resolve_dirty_decision(live_reply: Option<bool>) -> bool {
+    live_reply.unwrap_or(true)
+}
+
+/// Emits `query-dirty` to the given tab's webview and waits for its
+/// `report_dirty` reply, falling back to `resolve_dirty_decision`'s default
+/// if it doesn't answer within `DIRTY_QUERY_TIMEOUT` (or there's no such
+/// webview to ask). Also returns that default for a tab whose webview is
+/// still loading (its `installDirtyQueryResponder` hasn't run yet), so a
+/// freshly-opened tab shows up as dirty in a quit confirmation until it's
+/// ready to answer for itself.
+async fn query_tab_dirty(app: &AppHandle, tab_id: &str, webview_label: &str) -> bool {
+    let request_id = format!(
+        "dirty-query-{}",
+        DIRTY_QUERY_COUNTER.fetch_add(1, Ordering::Relaxed)
+    );
+    let (tx, rx) = oneshot::channel();
+
+    {
+        let senders = app.state::<DirtyReplySenders>();
+        senders.lock().unwrap().insert(request_id.clone(), tx);
+    }
+
+    let payload = DirtyQueryPayload {
+        request_id: request_id.clone(),
+        tab_id: tab_id.to_string(),
+    };
+    let emitted = app
+        .emit_to(EventTarget::webview(webview_label), "query-dirty", &payload)
+        .is_ok();
+
+    let live_reply = if emitted {
+        tokio::time::timeout(DIRTY_QUERY_TIMEOUT, rx)
+            .await
+            .ok()
+            .and_then(Result::ok)
+    } else {
+        None
+    };
+
+    // Drop any leftover sender; a no-op if report_dirty already removed it.
+    {
+        let senders = app.state::<DirtyReplySenders>();
+        senders.lock().unwrap().remove(&request_id);
+    }
+
+    resolve_dirty_decision(live_reply)
+}
+
+/// Live dirty state (see `query_tab_dirty`) for every open tab's label.
+/// Queries run concurrently — each is spawned as its own task before any is
+/// awaited — so quitting with several tabs open waits at most one
+/// `DIRTY_QUERY_TIMEOUT`, not one per tab.
+async fn live_dirty_tab_labels(app: &AppHandle) -> Vec<String> {
+    let tabs: Vec<(String, String, String)> = {
+        let registry_state = app.state::<Mutex<TabRegistry>>();
+        let reg = registry_state.lock().unwrap();
+        reg.tabs
+            .iter()
+            .map(|t| (t.info.id.clone(), t.webview_label.clone(), t.info.label.clone()))
+            .collect()
+    };
+
+    let queries: Vec<_> = tabs
+        .into_iter()
+        .map(|(tab_id, webview_label, label)| {
+            let app = app.clone();
+            let handle = tauri::async_runtime::spawn(async move {
+                query_tab_dirty(&app, &tab_id, &webview_label).await
+            });
+            (label, handle)
+        })
+        .collect();
+
+    let mut dirty_labels = Vec::new();
+    for (label, handle) in queries {
+        if handle.await.unwrap_or(true) {
+            dirty_labels.push(label);
+        }
+    }
+    dirty_labels
 }
 
 /// Show a blocking discard/cancel dialog. Only safe to call off the platform
@@ -411,16 +522,22 @@ fn confirm_quit_blocking(app: &AppHandle, message: String) -> bool {
         .blocking_show()
 }
 
-fn do_close_tab_with_confirmation(app: &AppHandle, tab_id: &str, force: bool) -> Result<(), String> {
+async fn do_close_tab_with_confirmation(
+    app: &AppHandle,
+    tab_id: &str,
+    force: bool,
+) -> Result<(), String> {
     if !force {
-        let registry_state = app.state::<Mutex<TabRegistry>>();
-        let reg = registry_state.lock().unwrap();
-        let tab = reg
-            .get_tab_by_id(tab_id)
-            .ok_or_else(|| format!("Tab {tab_id} not found"))?;
-        let dirty = tab.info.dirty;
-        let label = tab.info.label.clone();
-        drop(reg);
+        let (webview_label, label) = {
+            let registry_state = app.state::<Mutex<TabRegistry>>();
+            let reg = registry_state.lock().unwrap();
+            let tab = reg
+                .get_tab_by_id(tab_id)
+                .ok_or_else(|| format!("Tab {tab_id} not found"))?;
+            (tab.webview_label.clone(), tab.info.label.clone())
+        };
+
+        let dirty = query_tab_dirty(app, tab_id, &webview_label).await;
 
         if dirty && !confirm_discard_blocking(app, discard_tab_message(&label)) {
             return Ok(());
@@ -525,7 +642,17 @@ fn focus_tab(app: AppHandle, tab_id: String) -> Result<(), String> {
 /// must not run on the platform event-loop thread.
 #[tauri::command]
 async fn close_tab(app: AppHandle, tab_id: String, force: Option<bool>) -> Result<(), String> {
-    do_close_tab_with_confirmation(&app, &tab_id, force.unwrap_or(false))
+    do_close_tab_with_confirmation(&app, &tab_id, force.unwrap_or(false)).await
+}
+
+/// The webview side of `query_tab_dirty`'s request/reply protocol: an editor
+/// answers a `query-dirty` event with its current `SaveController` state.
+#[tauri::command]
+fn report_dirty(app: AppHandle, request_id: String, dirty: bool) {
+    let sender = app.state::<DirtyReplySenders>().lock().unwrap().remove(&request_id);
+    if let Some(tx) = sender {
+        let _ = tx.send(dirty);
+    }
 }
 
 /// A tab's dirty flag is the only state a webview can freely report about
@@ -682,7 +809,7 @@ fn maximize_window(app: AppHandle) -> Result<(), String> {
 /// already runs on that thread and uses the dialog's non-blocking `show()`.
 #[tauri::command]
 async fn quit_app(app: AppHandle) {
-    let dirty_labels = dirty_tab_labels(&app);
+    let dirty_labels = live_dirty_tab_labels(&app).await;
     match quit_confirmation_message(&dirty_labels) {
         None => app.exit(0),
         Some(message) => {
@@ -697,6 +824,7 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .manage(Mutex::new(TabRegistry::new()))
+        .manage(DirtyReplySenders::default())
         .setup(|app| {
             let window = WindowBuilder::new(app, "main")
                 .title("Operaton Modeler")
@@ -745,29 +873,35 @@ pub fn run() {
                 }
                 tauri::WindowEvent::CloseRequested { api, .. } => {
                     // Runs on the platform event loop, so the confirmation
-                    // dialog must be non-blocking here (unlike quit_app).
+                    // dialog must be non-blocking here (unlike quit_app), and
+                    // querying each tab's live dirty state (an async round
+                    // trip) has to happen in a spawned task rather than
+                    // inline.
                     api.prevent_close();
-                    let dirty_labels = dirty_tab_labels(&app_handle);
-                    match quit_confirmation_message(&dirty_labels) {
-                        None => app_handle.exit(0),
-                        Some(message) => {
-                            let app_for_dialog = app_handle.clone();
-                            app_handle
-                                .dialog()
-                                .message(message)
-                                .title("Unsaved changes")
-                                .kind(MessageDialogKind::Warning)
-                                .buttons(MessageDialogButtons::OkCancelCustom(
-                                    "Quit Anyway".into(),
-                                    "Cancel".into(),
-                                ))
-                                .show(move |confirmed| {
-                                    if confirmed {
-                                        app_for_dialog.exit(0);
-                                    }
-                                });
+                    let app_for_query = app_handle.clone();
+                    tauri::async_runtime::spawn(async move {
+                        let dirty_labels = live_dirty_tab_labels(&app_for_query).await;
+                        match quit_confirmation_message(&dirty_labels) {
+                            None => app_for_query.exit(0),
+                            Some(message) => {
+                                let app_for_dialog = app_for_query.clone();
+                                app_for_query
+                                    .dialog()
+                                    .message(message)
+                                    .title("Unsaved changes")
+                                    .kind(MessageDialogKind::Warning)
+                                    .buttons(MessageDialogButtons::OkCancelCustom(
+                                        "Quit Anyway".into(),
+                                        "Cancel".into(),
+                                    ))
+                                    .show(move |confirmed| {
+                                        if confirmed {
+                                            app_for_dialog.exit(0);
+                                        }
+                                    });
+                            }
                         }
-                    }
+                    });
                 }
                 _ => {}
             });
@@ -809,6 +943,7 @@ pub fn run() {
             pick_and_open_file,
             focus_tab,
             close_tab,
+            report_dirty,
             update_tab_state,
             write_document,
             save_document_as,
@@ -855,5 +990,20 @@ mod quit_confirmation_tests {
             message,
             "2 documents have unsaved changes: a.bpmn, b.dmn. Quit anyway?"
         );
+    }
+
+    #[test]
+    fn resolve_dirty_decision_trusts_a_clean_live_reply() {
+        assert_eq!(resolve_dirty_decision(Some(false)), false);
+    }
+
+    #[test]
+    fn resolve_dirty_decision_trusts_a_dirty_live_reply() {
+        assert_eq!(resolve_dirty_decision(Some(true)), true);
+    }
+
+    #[test]
+    fn resolve_dirty_decision_assumes_dirty_when_no_reply_arrives_in_time() {
+        assert_eq!(resolve_dirty_decision(None), true);
     }
 }
