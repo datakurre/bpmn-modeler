@@ -1,25 +1,23 @@
 import { invoke } from "@tauri-apps/api/core";
-import { save as saveFile } from "@tauri-apps/plugin-dialog";
 
 import "./styles/default.css";
 import { createEditor, exportSchema } from "./editor";
-import { focusNextTab, focusPreviousTab } from "../../shared/tab-cycle";
 import {
-    basenameOf,
     formatError,
+    hasContent,
     showDesktopStatus,
     updateDesktopStatus,
 } from "../../shared/desktop-editor";
+import { SaveController } from "../../shared/save-controller";
+import {
+    getTabIdFromLocation,
+    installCommonKeyboardHandlers,
+    installShortcutsHelp,
+    reportTabDirty,
+    type TabDocument,
+} from "../../shared/desktop-shell";
 
-interface TabDocument {
-    tabId: string;
-    kind: "bpmn" | "dmn" | "form";
-    path: string | null;
-    content: string | null;
-    hasBeenSaved: boolean;
-}
-
-const tabId = new URLSearchParams(location.search).get("tabId") ?? "";
+const tabId = getTabIdFromLocation();
 
 const emptySchema = JSON.stringify(
     {
@@ -32,38 +30,42 @@ const emptySchema = JSON.stringify(
     2,
 );
 
-let filePath: string | null = null;
-let dirty = false;
-let hasBeenSaved = false;
+const saveController = new SaveController(
+    {
+        exportContent: async () => JSON.stringify(exportSchema(), null, 2),
+        writeDocument: (content) => invoke("write_document", { tabId, content }),
+        saveAs: (content) =>
+            invoke<string | null>("save_document_as", {
+                tabId,
+                content,
+                defaultName: "new.form",
+                filterName: "Form-JS forms",
+                extension: "form",
+            }),
+        onStateChange: (state) => {
+            reportTabDirty(tabId, state.dirty, showStatus);
+            updateStatus();
+        },
+    },
+    { filePath: null, hasBeenSaved: false },
+);
+
 let initializing = true;
 
 window.addEventListener("load", () => {
     void initialize();
 });
 
-window.addEventListener("contextmenu", (event) => {
-    event.preventDefault();
-    showShortcutsHelp(event.clientX, event.clientY);
-});
-
-window.addEventListener("click", (event) => {
-    const help = document.getElementById("desktop-shortcuts-help");
-    if (help && !help.contains(event.target as Node)) {
-        hideShortcutsHelp();
-    }
-});
+installShortcutsHelp();
 
 async function initialize(): Promise<void> {
     try {
         const doc = await invoke<TabDocument>("get_tab_document", { tabId });
-        filePath = doc.path;
-        hasBeenSaved = doc.hasBeenSaved;
+        saveController.setKnownFile(doc.path, doc.hasBeenSaved);
 
-        createEditor(doc.content ?? emptySchema, () => {
+        createEditor(hasContent(doc.content) ? doc.content : emptySchema, () => {
             if (!initializing) {
-                dirty = true;
-                void invoke("update_tab_state", { tabId, dirty: true });
-                updateStatus();
+                saveController.markDirty();
             }
         });
         initializing = false;
@@ -74,53 +76,13 @@ async function initialize(): Promise<void> {
     }
 }
 
-window.addEventListener("keydown", (event) => {
-    if (event.key === "Escape") {
-        hideShortcutsHelp();
-        return;
-    }
-
-    const modifierPressed = event.ctrlKey || event.metaKey;
-    const key = event.key.toLowerCase();
-
-    if (modifierPressed && key === "q") {
-        event.preventDefault();
-        void invoke("quit_app");
-    } else if (modifierPressed && key === "s") {
-        event.preventDefault();
-        void saveDocument();
-    } else if (modifierPressed && key === "tab") {
-        event.preventDefault();
-        void (event.shiftKey ? focusPreviousTab() : focusNextTab());
-    }
+installCommonKeyboardHandlers({
+    onSave: () => void saveDocument(),
 });
 
 async function saveDocument(): Promise<void> {
     try {
-        if (!filePath) {
-            filePath =
-                (await saveFile({
-                    defaultPath: "new.form",
-                    filters: [{ name: "Form-JS forms", extensions: ["form"] }],
-                })) ?? null;
-        }
-
-        if (!filePath) return;
-
-        await invoke("write_document", {
-            path: filePath,
-            content: JSON.stringify(exportSchema(), null, 2),
-        });
-        dirty = false;
-        hasBeenSaved = true;
-
-        await invoke("update_tab_state", {
-            tabId,
-            dirty: false,
-            filePath,
-            hasBeenSaved: true,
-        });
-        updateStatus();
+        await saveController.save();
     } catch (error) {
         showStatus(`Unable to save form: ${formatError(error)}`);
     }
@@ -128,29 +90,11 @@ async function saveDocument(): Promise<void> {
 
 function updateStatus(): void {
     updateDesktopStatus({
-        filePath,
-        dirty,
-        hasBeenSaved,
+        ...saveController.getState(),
         defaultFilename: "Untitled.form",
     });
 }
 
 function showStatus(message: string): void {
     showDesktopStatus(message);
-}
-
-function showShortcutsHelp(x: number, y: number): void {
-    const help = document.getElementById("desktop-shortcuts-help");
-    if (!help) return;
-
-    help.hidden = false;
-    const left = Math.min(x, window.innerWidth - help.offsetWidth - 8);
-    const top = Math.min(y, window.innerHeight - help.offsetHeight - 8);
-    help.style.left = `${Math.max(8, left)}px`;
-    help.style.top = `${Math.max(8, top)}px`;
-}
-
-function hideShortcutsHelp(): void {
-    const help = document.getElementById("desktop-shortcuts-help");
-    if (help) help.hidden = true;
 }

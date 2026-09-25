@@ -1,6 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import { open as openDialog } from "@tauri-apps/plugin-dialog";
 
 import "./shell.css";
 
@@ -25,13 +24,6 @@ const KIND_LABELS: Record<EditorKind, string> = {
     dmn: "DMN diagram",
     form: "Form",
 };
-
-const OPEN_FILTERS = [
-    { name: "Operaton files", extensions: ["bpmn", "dmn", "form"] },
-    { name: "BPMN diagrams", extensions: ["bpmn"] },
-    { name: "DMN diagrams", extensions: ["dmn"] },
-    { name: "Form definitions", extensions: ["form"] },
-];
 
 let state: TabsPayload = { tabs: [], activeTabId: null };
 
@@ -88,9 +80,10 @@ async function refresh(): Promise<void> {
 }
 
 async function openFile(): Promise<void> {
-    const selected = await openDialog({ multiple: false, filters: OPEN_FILTERS });
-    if (!selected || Array.isArray(selected)) return;
-    await invoke("open_tab", { path: selected });
+    // The dialog runs entirely in Rust (pick_and_open_file) rather than
+    // this webview picking a path and passing it to open_tab, so an
+    // arbitrary path never needs to cross the IPC boundary for this flow.
+    await invoke("pick_and_open_file");
 }
 
 async function newFile(kind: EditorKind): Promise<void> {

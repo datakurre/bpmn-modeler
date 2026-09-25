@@ -1,9 +1,8 @@
 import { invoke } from "@tauri-apps/api/core";
-import { save as saveFile } from "@tauri-apps/plugin-dialog";
 import Split from "split.js";
 import { DiagramWarning } from "dmn-js/lib/Modeler";
 
-import "../../../vendor/dmn-js-modeler/webview/src/styles.css";
+import "./styles.css";
 import "dmn-js/dist/assets/dmn-font/css/dmn.css";
 import "dmn-js/dist/assets/diagram-js.css";
 import "dmn-js/dist/assets/dmn-js-decision-table.css";
@@ -20,25 +19,24 @@ import {
     getModelerInstance,
     loadDiagram,
     onCommandStackChanged,
-} from "../../../vendor/dmn-js-modeler/webview/src/modeler";
-import { createEvaluationPanel } from "../../../vendor/dmn-js-modeler/webview/src/evaluation-panel";
-import { focusNextTab, focusPreviousTab } from "../../shared/tab-cycle";
+} from "./modeler";
+import { createEvaluationPanel } from "./evaluation-panel";
 import {
-    basenameOf,
     formatError,
+    hasContent,
     showDesktopStatus,
     updateDesktopStatus,
 } from "../../shared/desktop-editor";
+import { SaveController } from "../../shared/save-controller";
+import {
+    getTabIdFromLocation,
+    installCommonKeyboardHandlers,
+    installShortcutsHelp,
+    reportTabDirty,
+    type TabDocument,
+} from "../../shared/desktop-shell";
 
-interface TabDocument {
-    tabId: string;
-    kind: "bpmn" | "dmn" | "form";
-    path: string | null;
-    content: string | null;
-    hasBeenSaved: boolean;
-}
-
-const tabId = new URLSearchParams(location.search).get("tabId") ?? "";
+const tabId = getTabIdFromLocation();
 
 const emptyDmn = `<?xml version="1.0" encoding="UTF-8"?>
 <definitions xmlns="https://www.omg.org/spec/DMN/20191111/MODEL/" id="definitions" name="definitions" namespace="http://camunda.org/schema/1.0/dmn">
@@ -51,9 +49,26 @@ const emptyDmn = `<?xml version="1.0" encoding="UTF-8"?>
 </definitions>
 `;
 
-let filePath: string | null = null;
-let dirty = false;
-let hasBeenSaved = false;
+const saveController = new SaveController(
+    {
+        exportContent: exportDiagram,
+        writeDocument: (content) => invoke("write_document", { tabId, content }),
+        saveAs: (content) =>
+            invoke<string | null>("save_document_as", {
+                tabId,
+                content,
+                defaultName: "decision.dmn",
+                filterName: "DMN diagrams",
+                extension: "dmn",
+            }),
+        onStateChange: (state) => {
+            reportTabDirty(tabId, state.dirty, showStatus);
+            updateStatus();
+        },
+    },
+    { filePath: null, hasBeenSaved: false },
+);
+
 let evaluationPanel: ReturnType<typeof createEvaluationPanel> | null = null;
 let initializing = true;
 
@@ -61,23 +76,12 @@ window.addEventListener("load", () => {
     void initialize();
 });
 
-window.addEventListener("contextmenu", (event) => {
-    event.preventDefault();
-    showShortcutsHelp(event.clientX, event.clientY);
-});
-
-window.addEventListener("click", (event) => {
-    const help = document.getElementById("desktop-shortcuts-help");
-    if (help && !help.contains(event.target as Node)) {
-        hideShortcutsHelp();
-    }
-});
+installShortcutsHelp();
 
 async function initialize(): Promise<void> {
     try {
         const doc = await invoke<TabDocument>("get_tab_document", { tabId });
-        filePath = doc.path;
-        hasBeenSaved = doc.hasBeenSaved;
+        saveController.setKnownFile(doc.path, doc.hasBeenSaved);
 
         setupSplit();
         createModeler();
@@ -98,7 +102,7 @@ async function initialize(): Promise<void> {
             evaluationPanel = createEvaluationPanel(dropZone);
         }
 
-        await openXml(doc.content ?? emptyDmn);
+        await openXml(hasContent(doc.content) ? doc.content : emptyDmn);
         initializing = false;
 
         document.body.classList.add("desktop-ready");
@@ -138,59 +142,17 @@ async function sendCurrentDmnToEvaluationPanel(): Promise<void> {
     await evaluationPanel.updateDmn(dmn);
 }
 
-window.addEventListener("keydown", (event) => {
-    if (event.key === "Escape") {
-        hideShortcutsHelp();
-        return;
-    }
-
-    const modifierPressed = event.ctrlKey || event.metaKey;
-    const key = event.key.toLowerCase();
-
-    if (modifierPressed && key === "q") {
-        event.preventDefault();
-        void invoke("quit_app");
-    } else if (modifierPressed && key === "s") {
-        event.preventDefault();
-        void saveDocument();
-    } else if (modifierPressed && key === "tab") {
-        event.preventDefault();
-        void (event.shiftKey ? focusPreviousTab() : focusNextTab());
-    }
+installCommonKeyboardHandlers({
+    onSave: () => void saveDocument(),
 });
 
 function markDirty(): void {
-    dirty = true;
-    void invoke("update_tab_state", { tabId, dirty: true });
-    updateStatus();
+    saveController.markDirty();
 }
 
 async function saveDocument(): Promise<void> {
     try {
-        let path = filePath;
-        if (!path) {
-            path =
-                (await saveFile({
-                    defaultPath: "decision.dmn",
-                    filters: [{ name: "DMN diagrams", extensions: ["dmn"] }],
-                })) ?? null;
-        }
-        if (!path) return;
-
-        const xml = await exportDiagram();
-        await invoke("write_document", { path, content: xml });
-
-        filePath = path;
-        dirty = false;
-        hasBeenSaved = true;
-
-        await invoke("update_tab_state", {
-            tabId,
-            dirty: false,
-            filePath: path,
-            hasBeenSaved: true,
-        });
-        updateStatus();
+        await saveController.save();
     } catch (error) {
         showStatus(`Unable to save DMN file: ${formatError(error)}`);
     }
@@ -198,29 +160,11 @@ async function saveDocument(): Promise<void> {
 
 function updateStatus(): void {
     updateDesktopStatus({
-        filePath,
-        dirty,
-        hasBeenSaved,
+        ...saveController.getState(),
         defaultFilename: "Untitled.dmn",
     });
 }
 
 function showStatus(message: string): void {
     showDesktopStatus(message);
-}
-
-function showShortcutsHelp(x: number, y: number): void {
-    const help = document.getElementById("desktop-shortcuts-help");
-    if (!help) return;
-
-    help.hidden = false;
-    const left = Math.min(x, window.innerWidth - help.offsetWidth - 8);
-    const top = Math.min(y, window.innerHeight - help.offsetHeight - 8);
-    help.style.left = `${Math.max(8, left)}px`;
-    help.style.top = `${Math.max(8, top)}px`;
-}
-
-function hideShortcutsHelp(): void {
-    const help = document.getElementById("desktop-shortcuts-help");
-    if (help) help.hidden = true;
 }

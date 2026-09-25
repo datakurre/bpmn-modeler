@@ -5,7 +5,6 @@
     "windows": ["*"],
     "webviews": ["*"],
     "permissions": [
-        "core:default",
-        "dialog:default"
+        "core:default"
     ]
 }

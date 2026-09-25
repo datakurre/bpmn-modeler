@@ -1,14 +1,15 @@
+mod atomic_write;
 mod tab_registry;
 
 use serde::Serialize;
-use std::fs::{self, File};
-use std::io::Write;
+use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use tauri::{
     AppHandle, Emitter, LogicalPosition, LogicalSize, Manager, WebviewBuilder, WebviewUrl, Window,
     WindowBuilder,
 };
+use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
 
 pub use tab_registry::{EditorKind, TabInfo, TabRegistry, TabState, TAB_BAR_HEIGHT};
 
@@ -147,28 +148,20 @@ fn do_resize_webviews(app: &AppHandle, window: &Window, registry: &TabRegistry) 
     Ok(())
 }
 
+/// `path`, when given, must already be fully resolved: an absolute,
+/// caller-trusted path (a command-line argument, or one picked from a native
+/// dialog), or the exact canonical `PathBuf` `TabRegistry::resolve_allowed_path`
+/// approved. This function does no further resolution or path-allow
+/// checking of its own, so it must never receive a webview-supplied string
+/// straight from IPC — the `open_tab` command resolves and checks first.
 fn do_open_tab(
     app: &AppHandle,
-    path: Option<String>,
+    path: Option<PathBuf>,
     kind_str: Option<String>,
 ) -> Result<TabInfo, String> {
     let window = app.get_window("main").ok_or("Main window not found")?;
 
-    let resolved_path = path.as_ref().map(|p| resolve_launch_path(PathBuf::from(p)));
-
-    if let Some(ref p) = resolved_path {
-        let registry_state = app.state::<Mutex<TabRegistry>>();
-        let reg = registry_state.lock().unwrap();
-        if let Some(existing) = reg.get_tab_by_path(&p.to_string_lossy()) {
-            let existing_id = existing.info.id.clone();
-            let existing_info = existing.info.clone();
-            drop(reg);
-            do_focus_tab(app, &existing_id)?;
-            return Ok(existing_info);
-        }
-    }
-
-    let kind = if let Some(ref p) = resolved_path {
+    let kind = if let Some(ref p) = path {
         EditorKind::from_path(p)
             .ok_or_else(|| format!("Unsupported file extension: {}", p.display()))?
     } else if let Some(k) = kind_str {
@@ -182,7 +175,7 @@ fn do_open_tab(
         EditorKind::Bpmn
     };
 
-    let (content, has_been_saved) = if let Some(ref p) = resolved_path {
+    let (content, has_been_saved) = if let Some(ref p) = path {
         if p.exists() {
             let text = fs::read_to_string(p)
                 .map_err(|e| format!("Failed to read {}: {e}", p.display()))?;
@@ -196,9 +189,23 @@ fn do_open_tab(
 
     let registry_state = app.state::<Mutex<TabRegistry>>();
     let mut reg = registry_state.lock().unwrap();
+
+    // Check for an already-open tab under the same lock that adds the new
+    // one, so two overlapping opens of the same path (e.g. a double click
+    // on a linked-resource overlay) can't both add a tab.
+    if let Some(ref p) = path {
+        if let Some(existing) = reg.get_tab_by_path(&p.to_string_lossy()) {
+            let existing_id = existing.info.id.clone();
+            let existing_info = existing.info.clone();
+            drop(reg);
+            do_focus_tab(app, &existing_id)?;
+            return Ok(existing_info);
+        }
+    }
+
     let (tab_id, webview_label) = reg.generate_id();
 
-    let label = if let Some(ref p) = resolved_path {
+    let label = if let Some(ref p) = path {
         p.file_name()
             .map(|n| n.to_string_lossy().into_owned())
             .unwrap_or_else(|| "diagram".into())
@@ -241,7 +248,7 @@ fn do_open_tab(
     let tab_info = TabInfo {
         id: tab_id.clone(),
         kind,
-        file_path: resolved_path.map(|p| p.to_string_lossy().into_owned()),
+        file_path: path.map(|p| p.to_string_lossy().into_owned()),
         label,
         dirty: false,
         has_been_saved,
@@ -345,6 +352,84 @@ fn do_close_tab(app: &AppHandle, tab_id: &str) -> Result<(), String> {
     Ok(())
 }
 
+/// The confirmation message for discarding a single tab's unsaved changes.
+fn discard_tab_message(label: &str) -> String {
+    format!("\"{label}\" has unsaved changes. Discard them?")
+}
+
+/// The confirmation message for quitting with one or more dirty tabs, or
+/// `None` if nothing is dirty and quitting needs no confirmation.
+fn quit_confirmation_message(dirty_labels: &[String]) -> Option<String> {
+    if dirty_labels.is_empty() {
+        return None;
+    }
+    let (noun, verb) = if dirty_labels.len() == 1 {
+        ("document", "has")
+    } else {
+        ("documents", "have")
+    };
+    Some(format!(
+        "{} {noun} {verb} unsaved changes: {}. Quit anyway?",
+        dirty_labels.len(),
+        dirty_labels.join(", ")
+    ))
+}
+
+fn dirty_tab_labels(app: &AppHandle) -> Vec<String> {
+    let registry_state = app.state::<Mutex<TabRegistry>>();
+    let reg = registry_state.lock().unwrap();
+    reg.dirty_tab_labels()
+}
+
+/// Show a blocking discard/cancel dialog. Only safe to call off the platform
+/// event-loop thread: from an `async fn` `#[tauri::command]` handler (Tauri
+/// runs those on the async runtime), never from a sync command handler or
+/// from `on_window_event`, both of which run on that thread.
+fn confirm_discard_blocking(app: &AppHandle, message: String) -> bool {
+    app.dialog()
+        .message(message)
+        .title("Unsaved changes")
+        .kind(MessageDialogKind::Warning)
+        .buttons(MessageDialogButtons::OkCancelCustom(
+            "Discard".into(),
+            "Cancel".into(),
+        ))
+        .blocking_show()
+}
+
+/// Same as `confirm_discard_blocking`, with a "Quit Anyway" affirmative
+/// button instead of "Discard". Same off-event-loop-thread requirement.
+fn confirm_quit_blocking(app: &AppHandle, message: String) -> bool {
+    app.dialog()
+        .message(message)
+        .title("Unsaved changes")
+        .kind(MessageDialogKind::Warning)
+        .buttons(MessageDialogButtons::OkCancelCustom(
+            "Quit Anyway".into(),
+            "Cancel".into(),
+        ))
+        .blocking_show()
+}
+
+fn do_close_tab_with_confirmation(app: &AppHandle, tab_id: &str, force: bool) -> Result<(), String> {
+    if !force {
+        let registry_state = app.state::<Mutex<TabRegistry>>();
+        let reg = registry_state.lock().unwrap();
+        let tab = reg
+            .get_tab_by_id(tab_id)
+            .ok_or_else(|| format!("Tab {tab_id} not found"))?;
+        let dirty = tab.info.dirty;
+        let label = tab.info.label.clone();
+        drop(reg);
+
+        if dirty && !confirm_discard_blocking(app, discard_tab_message(&label)) {
+            return Ok(());
+        }
+    }
+
+    do_close_tab(app, tab_id)
+}
+
 // ── IPC Commands ────────────────────────────────────────────────────────────
 
 #[tauri::command]
@@ -381,7 +466,53 @@ fn open_tab(
     path: Option<String>,
     kind: Option<String>,
 ) -> Result<TabInfo, String> {
-    do_open_tab(&app, path, kind)
+    let resolved_path = match path {
+        Some(ref p) => {
+            let resolved = resolve_launch_path(PathBuf::from(p));
+            let registry_state = app.state::<Mutex<TabRegistry>>();
+            let reg = registry_state.lock().unwrap();
+            // Use the exact canonical path this approves — never
+            // re-resolve the webview-supplied string separately, which
+            // would leave a window for the checked and the opened path to
+            // no longer be the same file.
+            let Some(canonical) = reg.resolve_allowed_path(&resolved) else {
+                return Err(format!(
+                    "\"{}\" is neither an already-open file nor a sibling of one",
+                    resolved.display()
+                ));
+            };
+            Some(canonical)
+        }
+        None => None,
+    };
+
+    do_open_tab(&app, resolved_path, kind)
+}
+
+/// Shows a native "Open" dialog and opens whatever file is picked, entirely
+/// in Rust — a webview never gets to name an arbitrary path here, unlike
+/// `open_tab`'s `path` argument, which is guarded but still webview-supplied.
+///
+/// `async` so Tauri runs it on the async runtime instead of the platform
+/// event loop: `blocking_pick_file()` below must not run on the same thread
+/// that pumps that loop, or the dialog (which needs the loop) deadlocks it.
+#[tauri::command]
+async fn pick_and_open_file(app: AppHandle) -> Result<Option<TabInfo>, String> {
+    let picked = app
+        .dialog()
+        .file()
+        .add_filter("Operaton files", &["bpmn", "dmn", "form"])
+        .add_filter("BPMN diagrams", &["bpmn"])
+        .add_filter("DMN diagrams", &["dmn"])
+        .add_filter("Form definitions", &["form"])
+        .blocking_pick_file();
+
+    let Some(file_path) = picked else {
+        return Ok(None);
+    };
+    let path = file_path.into_path().map_err(|e| e.to_string())?;
+
+    do_open_tab(&app, Some(path), None).map(Some)
 }
 
 #[tauri::command]
@@ -389,71 +520,112 @@ fn focus_tab(app: AppHandle, tab_id: String) -> Result<(), String> {
     do_focus_tab(&app, &tab_id)
 }
 
+/// `async` for the same reason as `pick_and_open_file`:
+/// `do_close_tab_with_confirmation` can call a `blocking_show()` dialog, which
+/// must not run on the platform event-loop thread.
 #[tauri::command]
-fn close_tab(app: AppHandle, tab_id: String) -> Result<(), String> {
-    do_close_tab(&app, &tab_id)
+async fn close_tab(app: AppHandle, tab_id: String, force: Option<bool>) -> Result<(), String> {
+    do_close_tab_with_confirmation(&app, &tab_id, force.unwrap_or(false))
 }
 
+/// A tab's dirty flag is the only state a webview can freely report about
+/// itself: its file path is set only by `open_tab`/`pick_and_open_file` (at
+/// open time) or `save_document_as` (at first save), both backend-driven,
+/// so a compromised webview can't use this to add an arbitrary path to its
+/// own tab's allow-listed file.
 #[tauri::command]
-fn update_tab_state(
-    app: AppHandle,
-    tab_id: String,
-    dirty: Option<bool>,
-    file_path: Option<String>,
-    has_been_saved: Option<bool>,
-) -> Result<(), String> {
+fn update_tab_state(app: AppHandle, tab_id: String, dirty: bool) -> Result<(), String> {
     let registry_state = app.state::<Mutex<TabRegistry>>();
     let mut reg = registry_state.lock().unwrap();
 
     let tab = reg
         .get_tab_by_id_mut(&tab_id)
         .ok_or_else(|| format!("Tab not found: {tab_id}"))?;
-
-    if let Some(d) = dirty {
-        tab.info.dirty = d;
-    }
-    if let Some(s) = has_been_saved {
-        tab.info.has_been_saved = s;
-    }
-    if let Some(p) = file_path {
-        let pb = PathBuf::from(&p);
-        if let Some(name) = pb.file_name() {
-            tab.info.label = name.to_string_lossy().into_owned();
-        }
-        tab.info.file_path = Some(p);
-    }
+    tab.info.dirty = dirty;
 
     emit_tabs_changed(&app, &reg);
     Ok(())
 }
 
 #[tauri::command]
-fn write_document(path: String, content: String) -> Result<(), String> {
-    let destination = Path::new(&path);
-    let parent = destination.parent().unwrap_or_else(|| Path::new("."));
-    let filename = destination
-        .file_name()
-        .ok_or_else(|| format!("Invalid path: {path}"))?
-        .to_string_lossy();
-    let temporary = parent.join(format!(".{filename}.{}.tmp", std::process::id()));
+fn write_document(app: AppHandle, tab_id: String, content: String) -> Result<(), String> {
+    let registry_state = app.state::<Mutex<TabRegistry>>();
+    let reg = registry_state.lock().unwrap();
+    let tab = reg
+        .get_tab_by_id(&tab_id)
+        .ok_or_else(|| format!("Tab not found: {tab_id}"))?;
+    let path = tab
+        .info
+        .file_path
+        .clone()
+        .ok_or_else(|| "Tab has no file path yet; use save_document_as".to_string())?;
+    drop(reg);
 
-    let result = (|| {
-        let mut file = File::create(&temporary).map_err(|error| error.to_string())?;
-        file.write_all(content.as_bytes())
-            .map_err(|error| error.to_string())?;
-        file.sync_all().map_err(|error| error.to_string())?;
-        fs::rename(&temporary, destination).map_err(|error| error.to_string())
-    })();
+    atomic_write::atomic_write(Path::new(&path), content.as_bytes()).map_err(|e| e.to_string())
+}
 
-    if result.is_err() {
-        let _ = fs::remove_file(&temporary);
+/// Shows a native "Save As" dialog and, if a path was chosen, writes
+/// `content` to it and records it on the tab. The path never passes through
+/// the webview: it comes straight from the dialog into this same command.
+///
+/// `async` for the same reason as `pick_and_open_file`: `blocking_save_file()`
+/// must not run on the platform event-loop thread.
+#[tauri::command]
+async fn save_document_as(
+    app: AppHandle,
+    tab_id: String,
+    content: String,
+    default_name: String,
+    filter_name: String,
+    extension: String,
+) -> Result<Option<String>, String> {
+    let picked = app
+        .dialog()
+        .file()
+        .set_file_name(&default_name)
+        .add_filter(&filter_name, &[extension.as_str()])
+        .blocking_save_file();
+
+    let Some(file_path) = picked else {
+        return Ok(None);
+    };
+    let path = file_path.into_path().map_err(|e| e.to_string())?;
+
+    atomic_write::atomic_write(&path, content.as_bytes()).map_err(|e| e.to_string())?;
+
+    let path_string = path.to_string_lossy().into_owned();
+
+    let registry_state = app.state::<Mutex<TabRegistry>>();
+    let mut reg = registry_state.lock().unwrap();
+    let tab = reg
+        .get_tab_by_id_mut(&tab_id)
+        .ok_or_else(|| format!("Tab not found: {tab_id}"))?;
+    if let Some(name) = path.file_name() {
+        tab.info.label = name.to_string_lossy().into_owned();
     }
+    tab.info.file_path = Some(path_string.clone());
+    tab.info.has_been_saved = true;
+    emit_tabs_changed(&app, &reg);
 
-    result
+    Ok(Some(path_string))
 }
 
 #[tauri::command]
-fn list_sibling_bpmn_files(path: String) -> Result<Vec<SiblingBpmnFile>, String> {
+fn list_sibling_bpmn_files(
+    app: AppHandle,
+    tab_id: String,
+) -> Result<Vec<SiblingBpmnFile>, String> {
+    let registry_state = app.state::<Mutex<TabRegistry>>();
+    let reg = registry_state.lock().unwrap();
+    let tab = reg
+        .get_tab_by_id(&tab_id)
+        .ok_or_else(|| format!("Tab not found: {tab_id}"))?;
+    let path = match tab.info.file_path.clone() {
+        Some(p) => p,
+        None => return Ok(Vec::new()),
+    };
+    drop(reg);
+
     let directory = Path::new(&path)
         .parent()
         .map(Path::to_path_buf)
@@ -504,9 +676,21 @@ fn maximize_window(app: AppHandle) -> Result<(), String> {
     Ok(())
 }
 
+/// `async` for the same reason as `pick_and_open_file`: `confirm_quit_blocking`
+/// calls `blocking_show()`, which must not run on the platform event-loop
+/// thread — unlike the `CloseRequested` handler in `run()` below, which
+/// already runs on that thread and uses the dialog's non-blocking `show()`.
 #[tauri::command]
-fn quit_app(app: AppHandle) {
-    app.exit(0);
+async fn quit_app(app: AppHandle) {
+    let dirty_labels = dirty_tab_labels(&app);
+    match quit_confirmation_message(&dirty_labels) {
+        None => app.exit(0),
+        Some(message) => {
+            if confirm_quit_blocking(&app, message) {
+                app.exit(0);
+            }
+        }
+    }
 }
 
 pub fn run() {
@@ -551,23 +735,70 @@ pub fn run() {
             pin_shell_gtk_height(&app.handle(), shell_height, !has_initial_file);
 
             let app_handle = app.handle().clone();
-            window.on_window_event(move |event| {
-                if matches!(event, tauri::WindowEvent::Resized(_)) {
+            window.on_window_event(move |event| match event {
+                tauri::WindowEvent::Resized(_) => {
                     let registry = app_handle.state::<Mutex<TabRegistry>>();
                     let reg = registry.lock().unwrap();
                     if let Some(win) = app_handle.get_window("main") {
                         let _ = do_resize_webviews(&app_handle, &win, &reg);
                     }
                 }
+                tauri::WindowEvent::CloseRequested { api, .. } => {
+                    // Runs on the platform event loop, so the confirmation
+                    // dialog must be non-blocking here (unlike quit_app).
+                    api.prevent_close();
+                    let dirty_labels = dirty_tab_labels(&app_handle);
+                    match quit_confirmation_message(&dirty_labels) {
+                        None => app_handle.exit(0),
+                        Some(message) => {
+                            let app_for_dialog = app_handle.clone();
+                            app_handle
+                                .dialog()
+                                .message(message)
+                                .title("Unsaved changes")
+                                .kind(MessageDialogKind::Warning)
+                                .buttons(MessageDialogButtons::OkCancelCustom(
+                                    "Quit Anyway".into(),
+                                    "Cancel".into(),
+                                ))
+                                .show(move |confirmed| {
+                                    if confirmed {
+                                        app_for_dialog.exit(0);
+                                    }
+                                });
+                        }
+                    }
+                }
+                _ => {}
             });
 
+            let mut open_errors: Vec<String> = Vec::new();
             for path in initial_args {
-                let _ = do_open_tab(
-                    &app.handle(),
-                    Some(path.to_string_lossy().into_owned()),
-                    None,
-                );
+                if let Err(error) = do_open_tab(&app.handle(), Some(path.clone()), None) {
+                    eprintln!("Failed to open {}: {error}", path.display());
+                    open_errors.push(format!("{}: {error}", path.display()));
+                }
             }
+
+            if !open_errors.is_empty() {
+                app.dialog()
+                    .message(open_errors.join("\n"))
+                    .title("Could not open file")
+                    .kind(MessageDialogKind::Error)
+                    .show(|_| {});
+            }
+
+            // If nothing ended up open (no initial files, or every one of
+            // them failed), lay the shell out for the empty state rather
+            // than leaving it at the pre-open guess from `shell_height`.
+            let registry_state = app.state::<Mutex<TabRegistry>>();
+            let reg = registry_state.lock().unwrap();
+            if reg.active_tab_id.is_none() {
+                if let Some(win) = app.get_window("main") {
+                    let _ = do_resize_webviews(&app.handle(), &win, &reg);
+                }
+            }
+            drop(reg);
 
             Ok(())
         })
@@ -575,10 +806,12 @@ pub fn run() {
             get_tabs,
             get_tab_document,
             open_tab,
+            pick_and_open_file,
             focus_tab,
             close_tab,
             update_tab_state,
             write_document,
+            save_document_as,
             list_sibling_bpmn_files,
             minimize_window,
             maximize_window,
@@ -586,4 +819,41 @@ pub fn run() {
         ])
         .run(tauri::generate_context!())
         .expect("error while running Operaton Modeler");
+}
+
+#[cfg(test)]
+mod quit_confirmation_tests {
+    use super::*;
+
+    #[test]
+    fn discard_tab_message_names_the_file() {
+        assert_eq!(
+            discard_tab_message("diagram.bpmn"),
+            "\"diagram.bpmn\" has unsaved changes. Discard them?"
+        );
+    }
+
+    #[test]
+    fn quit_confirmation_message_is_none_when_nothing_dirty() {
+        assert_eq!(quit_confirmation_message(&[]), None);
+    }
+
+    #[test]
+    fn quit_confirmation_message_uses_singular_grammar_for_one_tab() {
+        let message = quit_confirmation_message(&["a.bpmn".to_string()]).unwrap();
+        assert_eq!(
+            message,
+            "1 document has unsaved changes: a.bpmn. Quit anyway?"
+        );
+    }
+
+    #[test]
+    fn quit_confirmation_message_lists_every_dirty_tab() {
+        let message =
+            quit_confirmation_message(&["a.bpmn".to_string(), "b.dmn".to_string()]).unwrap();
+        assert_eq!(
+            message,
+            "2 documents have unsaved changes: a.bpmn, b.dmn. Quit anyway?"
+        );
+    }
 }

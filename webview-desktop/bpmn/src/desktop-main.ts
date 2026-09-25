@@ -1,5 +1,4 @@
 import { invoke } from "@tauri-apps/api/core";
-import { save as saveFile } from "@tauri-apps/plugin-dialog";
 
 import "./styles/default.css";
 import "./styles/light-theme/index.css";
@@ -31,27 +30,43 @@ import {
     layoutSelectedElements,
     parseLaidOutGeometry,
 } from "./selection-layout";
-import { focusNextTab, focusPreviousTab } from "../../shared/tab-cycle";
 import {
     basenameOf,
     formatError,
+    hasContent,
     showDesktopStatus,
     updateDesktopStatus,
 } from "../../shared/desktop-editor";
+import { SaveController } from "../../shared/save-controller";
+import {
+    getTabIdFromLocation,
+    installCommonKeyboardHandlers,
+    installShortcutsHelp,
+    reportTabDirty,
+    type TabDocument,
+} from "../../shared/desktop-shell";
 
-interface TabDocument {
-    tabId: string;
-    kind: "bpmn" | "dmn" | "form";
-    path: string | null;
-    content: string | null;
-    hasBeenSaved: boolean;
-}
+const tabId = getTabIdFromLocation();
 
-const tabId = new URLSearchParams(location.search).get("tabId") ?? "";
-
-let filePath: string | null = null;
-let dirty = false;
-let hasBeenSaved = false;
+const saveController = new SaveController(
+    {
+        exportContent: exportDiagram,
+        writeDocument: (content) => invoke("write_document", { tabId, content }),
+        saveAs: (content) =>
+            invoke<string | null>("save_document_as", {
+                tabId,
+                content,
+                defaultName: "diagram.bpmn",
+                filterName: "BPMN diagrams",
+                extension: "bpmn",
+            }),
+        onStateChange: (state) => {
+            reportTabDirty(tabId, state.dirty, showStatus);
+            updateStatus();
+        },
+    },
+    { filePath: null, hasBeenSaved: false },
+);
 
 let scannedDirectory: string | null = null;
 let siblingFiles: Map<string, string> = new Map();
@@ -73,16 +88,9 @@ window.addEventListener("load", () => {
     void initialize();
 });
 
-window.addEventListener("contextmenu", (event) => {
-    event.preventDefault();
-    showShortcutsHelp(event.clientX, event.clientY);
-});
+installShortcutsHelp();
 
 window.addEventListener("click", (event) => {
-    const help = document.getElementById("desktop-shortcuts-help");
-    if (help && !help.contains(event.target as Node)) {
-        hideShortcutsHelp();
-    }
     const chooser = document.getElementById("desktop-tab-chooser");
     if (chooser && !chooser.contains(event.target as Node)) {
         hideCandidateChooser();
@@ -92,15 +100,14 @@ window.addEventListener("click", (event) => {
 async function initialize(): Promise<void> {
     try {
         const doc = await invoke<TabDocument>("get_tab_document", { tabId });
-        filePath = doc.path;
-        hasBeenSaved = doc.hasBeenSaved;
+        saveController.setKnownFile(doc.path, doc.hasBeenSaved);
 
         setBpmnlintConfig({
             extends: "bpmnlint:recommended",
         });
         createModeler({ comments: false });
 
-        if (doc.content !== null) {
+        if (hasContent(doc.content)) {
             const result = await loadDiagram(doc.content);
             if (result.warnings.length > 0) {
                 console.warn("Import warnings:", result.warnings);
@@ -124,22 +131,26 @@ async function initialize(): Promise<void> {
         document.body.classList.add("desktop-ready");
         updateStatus();
 
-        if (filePath) {
-            await discoverLinkedResources(filePath);
+        const initialPath = saveController.getState().filePath;
+        if (initialPath) {
+            await discoverLinkedResources(initialPath);
         }
     } catch (error) {
         showStatus(`Unable to open BPMN file: ${formatError(error)}`);
     }
 }
 
-window.addEventListener("keydown", (event) => {
-    if (event.key === "Escape") {
-        hideShortcutsHelp();
+installCommonKeyboardHandlers({
+    onSave: () => void saveDocument(),
+    onEscape: () => {
         hideCandidateChooser();
         getModelerInstance()?.get<any>("toggleMode").toggleMode(false);
-        return;
-    }
+    },
+});
 
+// BPMN-specific shortcuts, on top of the Escape/Ctrl+Q/Ctrl+S/Ctrl+Tab ones
+// installCommonKeyboardHandlers() already wires above.
+window.addEventListener("keydown", (event) => {
     const modifierPressed = event.ctrlKey || event.metaKey;
     const key = event.key.toLowerCase();
 
@@ -153,16 +164,6 @@ window.addEventListener("keydown", (event) => {
         redoDiagram();
     }
 
-    if (modifierPressed && key === "q") {
-        event.preventDefault();
-        void invoke("quit_app");
-    }
-
-    if (modifierPressed && key === "s") {
-        event.preventDefault();
-        void saveDocument();
-    }
-
     if (modifierPressed && key === "l") {
         event.preventDefault();
         void autoLayout();
@@ -172,48 +173,19 @@ window.addEventListener("keydown", (event) => {
         event.preventDefault();
         document.body.classList.toggle("properties-visible");
     }
-
-    if (modifierPressed && key === "tab") {
-        event.preventDefault();
-        void (event.shiftKey ? focusPreviousTab() : focusNextTab());
-    }
 });
 
 function markDirty(): void {
-    dirty = true;
-    void invoke("update_tab_state", { tabId, dirty: true });
-    updateStatus();
+    saveController.markDirty();
 }
 
 async function saveDocument(): Promise<void> {
+    const wasUnsaved = !saveController.getState().filePath;
     try {
-        let path = filePath;
-        if (!path) {
-            path =
-                (await saveFile({
-                    defaultPath: "diagram.bpmn",
-                    filters: [{ name: "BPMN diagrams", extensions: ["bpmn"] }],
-                })) ?? null;
-        }
-        if (!path) return;
+        await saveController.save();
 
-        const xml = await exportDiagram();
-        await invoke("write_document", { path, content: xml });
-
-        const wasUnsaved = !filePath;
-        filePath = path;
-        dirty = false;
-        hasBeenSaved = true;
-
-        await invoke("update_tab_state", {
-            tabId,
-            dirty: false,
-            filePath: path,
-            hasBeenSaved: true,
-        });
-        updateStatus();
-
-        if (wasUnsaved) {
+        const path = saveController.getState().filePath;
+        if (wasUnsaved && path) {
             await discoverLinkedResources(path);
         }
     } catch (error) {
@@ -223,7 +195,7 @@ async function saveDocument(): Promise<void> {
 
 async function discoverLinkedResources(path: string): Promise<void> {
     scannedDirectory = dirnameOf(path);
-    siblingFiles = await loadSiblingBpmnFiles(path);
+    siblingFiles = await loadSiblingBpmnFiles(tabId);
     directoryIndex = await buildDirectoryIndex(siblingFiles);
     await refreshOverlays(path);
 }
@@ -256,7 +228,11 @@ function handleLinkedResourceMessage(msg: unknown): void {
 async function openLinkedFile(relativePath: string): Promise<void> {
     if (!scannedDirectory) return;
     const path = joinPath(scannedDirectory, relativePath);
-    await invoke("open_tab", { path, kind: "bpmn" });
+    try {
+        await invoke("open_tab", { path, kind: "bpmn" });
+    } catch (error) {
+        showStatus(`Unable to open ${relativePath}: ${formatError(error)}`);
+    }
 }
 
 function hideCandidateChooser(): void {
@@ -288,22 +264,6 @@ function showCandidateChooser(candidates: CallerCandidate[]): void {
     chooserElement.hidden = false;
 }
 
-function showShortcutsHelp(x: number, y: number): void {
-    const help = document.getElementById("desktop-shortcuts-help");
-    if (!help) return;
-
-    help.hidden = false;
-    const left = Math.min(x, window.innerWidth - help.offsetWidth - 8);
-    const top = Math.min(y, window.innerHeight - help.offsetHeight - 8);
-    help.style.left = `${Math.max(8, left)}px`;
-    help.style.top = `${Math.max(8, top)}px`;
-}
-
-function hideShortcutsHelp(): void {
-    const help = document.getElementById("desktop-shortcuts-help");
-    if (help) help.hidden = true;
-}
-
 async function autoLayout(): Promise<void> {
     try {
         const modeler = getModelerInstance();
@@ -329,9 +289,7 @@ async function autoLayout(): Promise<void> {
 
 function updateStatus(): void {
     updateDesktopStatus({
-        filePath,
-        dirty,
-        hasBeenSaved,
+        ...saveController.getState(),
         defaultFilename: "Untitled.bpmn",
     });
 }

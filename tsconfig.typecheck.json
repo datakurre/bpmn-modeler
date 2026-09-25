@@ -9,7 +9,6 @@
   ],
   "exclude": [
     "**/*.test.ts",
-    "**/*.spec.ts",
-    "webview-desktop/dmn/src/desktop-main.ts"
+    "**/*.spec.ts"
   ]
 }
