@@ -41,6 +41,7 @@ import { SaveController } from "../../shared/save-controller";
 import {
     getTabIdFromLocation,
     installCommonKeyboardHandlers,
+    installDirtyQueryResponder,
     installShortcutsHelp,
     reportTabDirty,
     type TabDocument,
@@ -89,6 +90,7 @@ window.addEventListener("load", () => {
 });
 
 installShortcutsHelp();
+installDirtyQueryResponder(() => saveController.getState().dirty);
 
 window.addEventListener("click", (event) => {
     const chooser = document.getElementById("desktop-tab-chooser");

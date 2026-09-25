@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import { formatError } from "./desktop-editor";
 import { focusNextTab, focusPreviousTab } from "./tab-cycle";
 
@@ -28,6 +29,18 @@ export function getTabIdFromLocation(): string {
 export function reportTabDirty(tabId: string, dirty: boolean, onError: (message: string) => void): void {
     invoke("update_tab_state", { tabId, dirty }).catch((error: unknown) => {
         onError(`Unable to sync tab state: ${formatError(error)}`);
+    });
+}
+
+/**
+ * Answers the backend's live dirty-state queries: close/quit can't rely on
+ * the last `reportTabDirty` call having landed yet (it's a separate,
+ * unordered IPC round trip), so instead they ask this tab directly and wait
+ * briefly for the reply before deciding whether to confirm.
+ */
+export function installDirtyQueryResponder(getDirty: () => boolean): void {
+    void listen<string>("query-dirty", (event) => {
+        void invoke("report_dirty", { requestId: event.payload, dirty: getDirty() });
     });
 }
 
