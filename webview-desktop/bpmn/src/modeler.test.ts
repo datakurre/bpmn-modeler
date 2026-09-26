@@ -189,6 +189,11 @@ describe("Modeler API Functions", () => {
         expect(result.warnings).toBeDefined();
     });
 
+    it("should create new diagrams as executable with a 7 day history TTL", () => {
+        expect(modelerModule.INITIAL_DIAGRAM).toContain('isExecutable="true"');
+        expect(modelerModule.INITIAL_DIAGRAM).toContain('camunda:historyTimeToLive="7"');
+    });
+
     it("should load diagram from XML", async () => {
         const result = await modelerModule.loadDiagram("<bpmn:definitions></bpmn:definitions>");
         expect(result).toBeDefined();
