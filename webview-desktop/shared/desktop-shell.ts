@@ -63,6 +63,35 @@ export function installDirtyQueryResponder(tabId: string, getDirty: () => boolea
     });
 }
 
+interface ReloadDocumentPayload {
+    tabId: string;
+    content: string;
+    discardChanges: boolean;
+}
+
+/**
+ * Handles the backend's `reload-document` event, sent when a tab's file
+ * changed on disk. A clean editor reloads silently. A dirty one is left
+ * alone unless the backend says the user already agreed to discard their
+ * edits (`discardChanges`): a plain reload racing with a fresh edit must
+ * never throw that edit away. As with `query-dirty`, every editor receives
+ * every event, so other tabs' payloads are ignored.
+ */
+export function installReloadDocumentHandler(
+    tabId: string,
+    getDirty: () => boolean,
+    reload: (content: string) => Promise<void>,
+    onError: (message: string) => void,
+): void {
+    void listen<ReloadDocumentPayload>("reload-document", (event) => {
+        if (event.payload.tabId !== tabId) return;
+        if (getDirty() && !event.payload.discardChanges) return;
+        reload(event.payload.content).catch((error: unknown) => {
+            onError(`Unable to reload from disk: ${formatError(error)}`);
+        });
+    });
+}
+
 export function showShortcutsHelp(x: number, y: number): void {
     const help = document.getElementById("desktop-shortcuts-help");
     if (!help) return;

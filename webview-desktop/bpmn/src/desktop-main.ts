@@ -42,6 +42,7 @@ import {
     getTabIdFromLocation,
     installCommonKeyboardHandlers,
     installDirtyQueryResponder,
+    installReloadDocumentHandler,
     installShortcutsHelp,
     type TabDocument,
 } from "../../shared/desktop-shell";
@@ -57,6 +58,10 @@ const saveController = createDesktopSaveController({
     onStatus: showStatus,
     onStateChange: updateStatus,
 });
+
+// True while an on-disk reload swaps the diagram in, so the import isn't
+// mistaken for a user edit.
+let reloading = false;
 
 let scannedDirectory: string | null = null;
 let siblingFiles: Map<string, string> = new Map();
@@ -80,6 +85,12 @@ window.addEventListener("load", () => {
 
 installShortcutsHelp();
 installDirtyQueryResponder(tabId, () => saveController.getState().dirty);
+installReloadDocumentHandler(
+    tabId,
+    () => saveController.getState().dirty,
+    reloadFromDisk,
+    showStatus,
+);
 
 window.addEventListener("click", (event) => {
     const chooser = document.getElementById("desktop-tab-chooser");
@@ -110,6 +121,7 @@ async function initialize(): Promise<void> {
         chooserElement = document.getElementById("desktop-tab-chooser");
 
         onCommandStackChanged(() => {
+            if (reloading) return;
             markDirty();
         });
 
@@ -165,6 +177,29 @@ window.addEventListener("keydown", (event) => {
         document.body.classList.toggle("properties-visible");
     }
 });
+
+/** Replaces the diagram with `content`, the file's new on-disk version. */
+async function reloadFromDisk(content: string): Promise<void> {
+    const canvas = getModelerInstance()?.get<any>("canvas");
+    const viewbox = canvas?.viewbox();
+
+    reloading = true;
+    try {
+        if (hasContent(content)) {
+            await loadDiagram(content);
+        } else {
+            await newDiagram();
+        }
+    } finally {
+        reloading = false;
+    }
+
+    if (viewbox) canvas.viewbox(viewbox);
+    saveController.markReloaded();
+
+    const path = saveController.getState().filePath;
+    if (path) await discoverLinkedResources(path);
+}
 
 function markDirty(): void {
     saveController.markDirty();

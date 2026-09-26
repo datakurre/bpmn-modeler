@@ -1,4 +1,5 @@
 mod atomic_write;
+mod disk_watch;
 mod tab_registry;
 
 use serde::Serialize;
@@ -14,6 +15,8 @@ use tauri::{
 };
 use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
 use tokio::sync::oneshot;
+
+use disk_watch::{DiskCheck, DiskSnapshot};
 
 pub use tab_registry::{EditorKind, TabInfo, TabRegistry, TabState, TAB_BAR_HEIGHT};
 
@@ -179,16 +182,16 @@ fn do_open_tab(
         EditorKind::Bpmn
     };
 
-    let (content, has_been_saved) = if let Some(ref p) = path {
+    let (content, disk, has_been_saved) = if let Some(ref p) = path {
         if p.exists() {
-            let text = fs::read_to_string(p)
+            let disk = DiskSnapshot::read(p)
                 .map_err(|e| format!("Failed to read {}: {e}", p.display()))?;
-            (Some(text), true)
+            (disk.content().map(str::to_owned), disk, true)
         } else {
-            (None, false)
+            (None, DiskSnapshot::missing(), false)
         }
     } else {
-        (None, false)
+        (None, DiskSnapshot::missing(), false)
     };
 
     let registry_state = app.state::<Mutex<TabRegistry>>();
@@ -262,6 +265,7 @@ fn do_open_tab(
         info: tab_info.clone(),
         webview_label,
         initial_content: content,
+        disk,
     });
 
     emit_tabs_changed(app, &reg);
@@ -547,6 +551,147 @@ async fn do_close_tab_with_confirmation(
     do_close_tab(app, tab_id)
 }
 
+// ── External changes ────────────────────────────────────────────────────────
+
+/// How often open files are checked for changes made outside the app. Each
+/// check is one `stat` per tab; a file is only read when its stamp moved.
+const EXTERNAL_CHANGE_POLL_INTERVAL: Duration = Duration::from_secs(1);
+
+/// Payload for the `reload-document` event, addressed to one tab's webview.
+/// `discard_changes` is set only after the user agreed to throw away unsaved
+/// edits; without it the editor refuses to reload while it is dirty, which
+/// covers an edit made after the backend last saw the tab as clean.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ReloadDocumentPayload {
+    tab_id: String,
+    content: String,
+    discard_changes: bool,
+}
+
+/// A tab whose file changed on disk, waiting to be reloaded or kept.
+struct ExternalChange {
+    tab_id: String,
+    webview_label: String,
+    label: String,
+    /// The tab's disk snapshot when the change was found. If the tab has a
+    /// different one by the time the change is applied, it was saved (or
+    /// already handled) in between and this change is stale.
+    known: DiskSnapshot,
+    current: DiskSnapshot,
+}
+
+/// The prompt for an outside change to a file that also has unsaved edits.
+fn external_change_message(label: &str) -> String {
+    format!(
+        "\"{label}\" was changed on disk, but it also has unsaved changes here. \
+         Reload it and discard your changes?"
+    )
+}
+
+/// Compares every saved tab's file with what the tab last saw, quietly
+/// absorbing touch-only changes and returning the ones whose content differs.
+fn collect_external_changes(app: &AppHandle) -> Vec<ExternalChange> {
+    let registry_state = app.state::<Mutex<TabRegistry>>();
+    let mut reg = registry_state.lock().unwrap();
+
+    let mut changes = Vec::new();
+    for tab in reg.tabs.iter_mut() {
+        let Some(path) = tab.info.file_path.clone() else {
+            continue;
+        };
+        match disk_watch::check(Path::new(&path), &tab.disk) {
+            DiskCheck::Unchanged => {}
+            DiskCheck::Touched(snapshot) => tab.disk = snapshot,
+            DiskCheck::Modified(current) => changes.push(ExternalChange {
+                tab_id: tab.info.id.clone(),
+                webview_label: tab.webview_label.clone(),
+                label: tab.info.label.clone(),
+                known: tab.disk.clone(),
+                current,
+            }),
+        }
+    }
+    changes
+}
+
+/// Records `change` as what the tab now knows about the file on disk and,
+/// when `reload` is set, hands the new content to the tab's webview. Returns
+/// false (doing nothing) if the tab was closed or saved since the change was
+/// found.
+fn apply_external_change(
+    app: &AppHandle,
+    change: &ExternalChange,
+    reload: Option<bool>,
+) -> bool {
+    let registry_state = app.state::<Mutex<TabRegistry>>();
+    let mut reg = registry_state.lock().unwrap();
+
+    let Some(tab) = reg.get_tab_by_id_mut(&change.tab_id) else {
+        return false;
+    };
+    if tab.disk != change.known {
+        return false;
+    }
+    tab.disk = change.current.clone();
+
+    if let Some(discard_changes) = reload {
+        let content = change.current.content().unwrap_or_default().to_owned();
+        tab.initial_content = Some(content.clone());
+        tab.info.has_been_saved = true;
+        emit_tabs_changed(app, &reg);
+        drop(reg);
+
+        let _ = app.emit_to(
+            EventTarget::webview(&change.webview_label),
+            "reload-document",
+            ReloadDocumentPayload {
+                tab_id: change.tab_id.clone(),
+                content,
+                discard_changes,
+            },
+        );
+    }
+    true
+}
+
+/// A clean tab is reloaded silently. A dirty one asks first, and "Keep My
+/// Changes" (also what closing the dialog means) leaves the editor alone
+/// while remembering the disk version, so the same change isn't asked about
+/// again — only a further one is.
+async fn handle_external_change(app: &AppHandle, change: ExternalChange) {
+    let dirty = query_tab_dirty(app, &change.tab_id, &change.webview_label).await;
+
+    if !dirty {
+        apply_external_change(app, &change, Some(false));
+        return;
+    }
+
+    let reload = app
+        .dialog()
+        .message(external_change_message(&change.label))
+        .title("File changed on disk")
+        .kind(MessageDialogKind::Warning)
+        .buttons(MessageDialogButtons::OkCancelCustom(
+            "Reload".into(),
+            "Keep My Changes".into(),
+        ))
+        .blocking_show();
+
+    apply_external_change(app, &change, reload.then_some(true));
+}
+
+async fn watch_open_files(app: AppHandle) {
+    let mut interval = tokio::time::interval(EXTERNAL_CHANGE_POLL_INTERVAL);
+    interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+    loop {
+        interval.tick().await;
+        for change in collect_external_changes(&app) {
+            handle_external_change(&app, change).await;
+        }
+    }
+}
+
 // ── IPC Commands ────────────────────────────────────────────────────────────
 
 #[tauri::command]
@@ -677,18 +822,22 @@ fn update_tab_state(app: AppHandle, tab_id: String, dirty: bool) -> Result<(), S
 #[tauri::command]
 fn write_document(app: AppHandle, tab_id: String, content: String) -> Result<(), String> {
     let registry_state = app.state::<Mutex<TabRegistry>>();
-    let reg = registry_state.lock().unwrap();
+    // Held across the write so the external-change poll can't observe the
+    // new file before the tab's disk snapshot is updated to match it, and
+    // report our own save as an outside edit.
+    let mut reg = registry_state.lock().unwrap();
     let tab = reg
-        .get_tab_by_id(&tab_id)
+        .get_tab_by_id_mut(&tab_id)
         .ok_or_else(|| format!("Tab not found: {tab_id}"))?;
     let path = tab
         .info
         .file_path
         .clone()
         .ok_or_else(|| "Tab has no file path yet; use save_document_as".to_string())?;
-    drop(reg);
 
-    atomic_write::atomic_write(Path::new(&path), content.as_bytes()).map_err(|e| e.to_string())
+    atomic_write::atomic_write(Path::new(&path), content.as_bytes()).map_err(|e| e.to_string())?;
+    tab.disk = DiskSnapshot::after_write(Path::new(&path), &content);
+    Ok(())
 }
 
 /// Shows a native "Save As" dialog and, if a path was chosen, writes
@@ -732,6 +881,7 @@ async fn save_document_as(
     }
     tab.info.file_path = Some(path_string.clone());
     tab.info.has_been_saved = true;
+    tab.disk = DiskSnapshot::after_write(&path, &content);
     emit_tabs_changed(&app, &reg);
 
     Ok(Some(path_string))
@@ -862,6 +1012,8 @@ pub fn run() {
 
             pin_shell_gtk_height(&app.handle(), shell_height, !has_initial_file);
 
+            tauri::async_runtime::spawn(watch_open_files(app.handle().clone()));
+
             let app_handle = app.handle().clone();
             window.on_window_event(move |event| match event {
                 tauri::WindowEvent::Resized(_) => {
@@ -989,6 +1141,15 @@ mod quit_confirmation_tests {
         assert_eq!(
             message,
             "2 documents have unsaved changes: a.bpmn, b.dmn. Quit anyway?"
+        );
+    }
+
+    #[test]
+    fn external_change_message_names_the_file_and_the_risk() {
+        assert_eq!(
+            external_change_message("diagram.bpmn"),
+            "\"diagram.bpmn\" was changed on disk, but it also has unsaved changes here. \
+             Reload it and discard your changes?"
         );
     }
 

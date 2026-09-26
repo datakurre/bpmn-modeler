@@ -1,7 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 
 import "./styles/default.css";
-import { createEditor, exportSchema } from "./editor";
+import { createEditor, exportSchema, loadSchema } from "./editor";
 import {
     formatError,
     hasContent,
@@ -13,6 +13,7 @@ import {
     getTabIdFromLocation,
     installCommonKeyboardHandlers,
     installDirtyQueryResponder,
+    installReloadDocumentHandler,
     installShortcutsHelp,
     type TabDocument,
 } from "../../shared/desktop-shell";
@@ -48,6 +49,12 @@ window.addEventListener("load", () => {
 
 installShortcutsHelp();
 installDirtyQueryResponder(tabId, () => saveController.getState().dirty);
+installReloadDocumentHandler(
+    tabId,
+    () => saveController.getState().dirty,
+    reloadFromDisk,
+    showStatus,
+);
 
 async function initialize(): Promise<void> {
     try {
@@ -70,6 +77,25 @@ async function initialize(): Promise<void> {
 installCommonKeyboardHandlers({
     onSave: () => void saveDocument(),
 });
+
+/**
+ * How long after importing a schema the editor's change events still count
+ * as that import rather than user edits: the playground re-renders its
+ * preview asynchronously and reports the import again when it does.
+ */
+const RELOAD_SETTLE_MS = 300;
+
+/** Replaces the form with `content`, the file's new on-disk version. */
+async function reloadFromDisk(content: string): Promise<void> {
+    initializing = true;
+    try {
+        await loadSchema(hasContent(content) ? content : emptySchema);
+        await new Promise((resolve) => setTimeout(resolve, RELOAD_SETTLE_MS));
+    } finally {
+        initializing = false;
+    }
+    saveController.markReloaded();
+}
 
 async function saveDocument(): Promise<void> {
     try {

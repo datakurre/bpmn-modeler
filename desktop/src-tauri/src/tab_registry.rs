@@ -1,3 +1,4 @@
+use crate::disk_watch::DiskSnapshot;
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
@@ -61,6 +62,8 @@ pub struct TabState {
     pub info: TabInfo,
     pub webview_label: String,
     pub initial_content: Option<String>,
+    /// What the file on disk last looked like to this tab (see `disk_watch`).
+    pub disk: DiskSnapshot,
 }
 
 #[derive(Default)]
@@ -206,6 +209,7 @@ mod tests {
             },
             webview_label,
             initial_content: None,
+            disk: DiskSnapshot::missing(),
         }
     }
 

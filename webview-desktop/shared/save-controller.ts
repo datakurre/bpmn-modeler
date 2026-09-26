@@ -87,6 +87,19 @@ export class SaveController {
     }
 
     /**
+     * Record that the editor now shows what is on disk (its file was
+     * reloaded after an outside change): clean, and saved even if it had
+     * never been. Callers only reload a dirty editor once the user agreed
+     * to discard its edits.
+     */
+    markReloaded(): void {
+        this.hasBeenSaved = true;
+        this.dirty = false;
+        this.changeGeneration += 1;
+        this.callbacks.onStateChange(this.getState());
+    }
+
+    /**
      * Save the document. If a save is already running or queued, this joins
      * that same chain — queuing at most one follow-up — instead of starting
      * a second, possibly-overlapping write.

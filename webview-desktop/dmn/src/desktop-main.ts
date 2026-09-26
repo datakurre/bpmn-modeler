@@ -32,6 +32,7 @@ import {
     getTabIdFromLocation,
     installCommonKeyboardHandlers,
     installDirtyQueryResponder,
+    installReloadDocumentHandler,
     installShortcutsHelp,
     type TabDocument,
 } from "../../shared/desktop-shell";
@@ -68,6 +69,12 @@ window.addEventListener("load", () => {
 
 installShortcutsHelp();
 installDirtyQueryResponder(tabId, () => saveController.getState().dirty);
+installReloadDocumentHandler(
+    tabId,
+    () => saveController.getState().dirty,
+    reloadFromDisk,
+    showStatus,
+);
 
 async function initialize(): Promise<void> {
     try {
@@ -136,6 +143,18 @@ async function sendCurrentDmnToEvaluationPanel(): Promise<void> {
 installCommonKeyboardHandlers({
     onSave: () => void saveDocument(),
 });
+
+/** Replaces the decision with `content`, the file's new on-disk version. */
+async function reloadFromDisk(content: string): Promise<void> {
+    // Importing fires command-stack changes that aren't user edits.
+    initializing = true;
+    try {
+        await openXml(hasContent(content) ? content : emptyDmn);
+    } finally {
+        initializing = false;
+    }
+    saveController.markReloaded();
+}
 
 function markDirty(): void {
     saveController.markDirty();

@@ -240,4 +240,52 @@ describe("SaveController", () => {
         expect(state.dirty).toBe(true);
         expect(state.hasBeenSaved).toBe(true);
     });
+
+    it("markReloaded clears the dirty state, marks the document saved and notifies", () => {
+        const states: SaveState[] = [];
+        const controller = new SaveController(
+            {
+                exportContent: async () => "content",
+                writeDocument: async () => {},
+                saveAs: async () => null,
+                onStateChange: (s) => states.push(s),
+            },
+            { filePath: "/tmp/doc.bpmn", hasBeenSaved: false },
+        );
+        controller.markDirty();
+        states.length = 0;
+
+        controller.markReloaded();
+
+        expect(controller.getState()).toEqual({
+            filePath: "/tmp/doc.bpmn",
+            dirty: false,
+            hasBeenSaved: true,
+        });
+        expect(states).toHaveLength(1);
+        expect(states[0].dirty).toBe(false);
+    });
+
+    it("markReloaded during a save leaves the document dirty once that save ends", async () => {
+        const write = deferred<void>();
+        const controller = new SaveController(
+            {
+                exportContent: async () => "content",
+                writeDocument: () => write.promise,
+                saveAs: async () => null,
+                onStateChange: () => {},
+            },
+            { filePath: "/tmp/doc.bpmn", hasBeenSaved: true },
+        );
+        controller.markDirty();
+
+        const savePromise = controller.save();
+        await Promise.resolve();
+        controller.markReloaded();
+        write.resolve();
+        await savePromise;
+
+        // The write started before the reload, so what is on screen is newer.
+        expect(controller.getState().dirty).toBe(true);
+    });
 });
