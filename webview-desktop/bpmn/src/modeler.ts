@@ -181,7 +181,7 @@ export async function loadDiagram(bpmn: string): Promise<ImportXMLResult> {
     } catch (error: unknown) {
         if ((error as ImportXMLError).warnings) {
             const { message, warnings } = error as ImportXMLError;
-            throw Error(`${message} ${warnings}`);
+            throw Error(`${message} ${warnings}`, { cause: error });
         }
         throw error;
     }

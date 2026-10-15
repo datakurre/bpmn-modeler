@@ -92,6 +92,14 @@
     color: var(--dt-surface-a10) !important;
 }
 
+.bio-properties-panel-taglist__input {
+    color: var(--dt-surface-a60) !important;
+}
+
+.bio-properties-panel-taglist__control:focus-within .bio-properties-panel-taglist__input {
+    color: var(--dt-surface-a10) !important;
+}
+
 .bio-properties-panel-checkbox > input[type="checkbox"] {
     accent-color: var(--dt-primary-a10) !important;
 }
@@ -121,7 +129,8 @@
     color: var(--dt-surface-a20) !important;
 }
 
-.bio-properties-panel-dropdown-button__menu {
+.bio-properties-panel-dropdown-button__menu,
+.bio-properties-panel-taglist__listbox {
     box-shadow:
         0 1px 4px 0 var(--dt-surface-a40),
         0 2px 16px 0 var(--dt-surface-a30) !important;

@@ -46,15 +46,17 @@
     "bpmnRepo": {
       "flake": false,
       "locked": {
-        "lastModified": 1789978540,
-        "narHash": "sha256-ghZd3FPTOOyy+Yl+pejo/n/btOx9P5uJykxu7BrZaXQ=",
+        "lastModified": 1791560046,
+        "narHash": "sha256-GW+QNnUfpxMZCshj8BRZqXws2lm13bzx88j2ri43O44=",
         "ref": "refs/heads/main",
-        "rev": "cea0883b1b5a5672b8f6453da8d2e8f86e8c1ef9",
-        "revCount": 323,
+        "rev": "4f79c9f067a97799343081fbd0c3091aabc8b1ad",
+        "revCount": 391,
+        "submodules": true,
         "type": "git",
         "url": "https://gitlab.com/vasara-bpm/vscode-operaton-bpmn-js-modeler.git"
       },
       "original": {
+        "submodules": true,
         "type": "git",
         "url": "https://gitlab.com/vasara-bpm/vscode-operaton-bpmn-js-modeler.git"
       }
@@ -111,11 +113,11 @@
     },
     "nixpkgs": {
       "locked": {
-        "lastModified": 1789844176,
-        "narHash": "sha256-COQmpo4lFIzMgUjr3ntDpjH0NwrCnf7N0uhR+6WPGP8=",
+        "lastModified": 1791637130,
+        "narHash": "sha256-TuvwvSjJrpqyIYdjhQ7Wu+ADVfeOpO2Um21/V7TOubw=",
         "owner": "NixOS",
         "repo": "nixpkgs",
-        "rev": "79b35bf0bda5cd110f856aa5b5b2c5ba4460dbf5",
+        "rev": "ca1659429c950a11a565b5764e37a1b704e17ec8",
         "type": "github"
       },
       "original": {

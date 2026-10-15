@@ -17,16 +17,23 @@ nix develop --command npm run desktop:dev
 Use `nix develop .#extension-dev` when building or inspecting the Java and
 Scala-based extension engines.
 
-The extension source repositories are pinned as remote GitLab inputs in
+The extension source repositories are pinned as remote Git inputs in
 `flake.lock`:
 
 - `vasara-bpm/vscode-operaton-bpmn-js-modeler`
 - `vasara-bpm/vscode-operaton-dmn-js-modeler`
 - `vasara-bpm/vscode-operaton-form-js-modeler`
 
-Normal Nix builds do not require local checkouts of these repositories. For
-local development against an editable extension checkout, place the three
-repositories next to this one and run `npm run setup:vendor`.
+Hermetic Nix builds (`nix build .#frontend`) automatically unpack these flake
+inputs into the build environment. For local development with `npm run build:webview:desktop`
+or `npm run desktop:dev`, vendor dependencies must be initialized once by running:
+
+```sh
+npm run setup:vendor
+```
+
+For development against editable local checkouts of the extensions, place the three
+repositories next to this one before running `npm run setup:vendor`.
 
 ## Builds and Checks
 
@@ -42,11 +49,15 @@ the shell, BPMN, DMN, and Form outputs.
 
 ## Dependency Updates
 
-Pinned GitHub and GitLab dependencies can be updated with:
+Upstream flake inputs can be updated using `nix flake update`:
 
 ```sh
-./scripts/update-flake-deps.sh --dry-run
+# Update all inputs
+nix flake update
+
+# Or update a specific extension input:
+nix flake update bpmnRepo
 ```
 
-Review the generated revision and hash changes before writing them to
-`flake.nix`.
+If upstream updates introduce new or updated npm dependencies in `package-lock.json`,
+update `npmDepsHash` in `flake.nix` with the new SRI hash reported by Nix.

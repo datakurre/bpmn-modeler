@@ -34,6 +34,16 @@ describe("SCRIPT_TEXTAREA_SELECTOR", () => {
         expect(ta.matches(SCRIPT_TEXTAREA_SELECTOR)).toBe(true);
     });
 
+    it("should match textarea with case-insensitive scriptValue name", () => {
+        const ta1 = document.createElement("textarea");
+        ta1.name = "custom-scriptvalue";
+        expect(ta1.matches(SCRIPT_TEXTAREA_SELECTOR)).toBe(true);
+
+        const ta2 = document.createElement("textarea");
+        ta2.name = "CUSTOM-SCRIPTVALUE";
+        expect(ta2.matches(SCRIPT_TEXTAREA_SELECTOR)).toBe(true);
+    });
+
     it("should not match non-script textareas", () => {
         const ta = document.createElement("textarea");
         ta.name = "documentation";

@@ -55,7 +55,7 @@ export default defineConfig({
         alias: {
             "bpmn-auto-layout": resolve(
                 __dirname,
-                "vendor/bpmn-js-modeler/vendor/bpmn-auto-layout/dist/index.js",
+                "vendor/bpmn-auto-layout/dist/index.js",
             ),
             "bpmn-js-element-templates": resolve(
                 __dirname,
@@ -64,6 +64,10 @@ export default defineConfig({
             "@bpmn-io/element-templates-validator": resolve(
                 __dirname,
                 "vendor/bpmn-js-modeler/vendor/operaton-element-templates-validator/dist/index.js",
+            ),
+            "operaton-element-templates": resolve(
+                __dirname,
+                "vendor/bpmn-js-modeler/vendor/operaton-element-templates",
             ),
         },
     },

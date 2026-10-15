@@ -35,11 +35,12 @@ interface TrackedTextarea {
 /**
  * CSS selector that matches all script-body textareas in the panel.
  *
- * Both `scriptValue` and `conditionScriptValue` end with `scriptValue`,
- * so a single `$=` selector covers every variant including prefixed ones
- * generated for listeners and I/O parameters.
+ * Both `scriptValue` and `conditionScriptValue` end with `scriptValue`
+ * when compared case-insensitively, so a single `$= ... i` selector covers
+ * every variant including prefixed ones generated for listeners and I/O
+ * parameters. Attribute selectors are case-sensitive by default.
  */
-export const SCRIPT_TEXTAREA_SELECTOR = 'textarea[name$="scriptValue"]';
+export const SCRIPT_TEXTAREA_SELECTOR = 'textarea[name$="scriptValue" i]';
 
 /**
  * Detect the script format/language for a given script textarea by looking
@@ -298,7 +299,6 @@ export class ScriptTextareaDecorator {
             propertyPath: textarea.name,
             scriptContext,
         };
-        console.log("[ScriptTextareaDecorator] posting openScriptEditor", msg);
         this.vscode.postMessage(msg);
     }
 

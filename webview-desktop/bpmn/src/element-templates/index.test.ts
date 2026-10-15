@@ -5,5 +5,6 @@ describe("element-templates/index", () => {
         const module = await import("./index");
         expect(module.ExtendElementTemplates).toBeDefined();
         expect(module.ExtendElementTemplates.__init__).toContain("extendedElementTemplates");
+        expect(module.ExtendElementTemplates.__init__).toContain("safeRemoveTemplateReplace");
     });
 });

@@ -8,9 +8,33 @@ mkdir -p "$ROOT_DIR/vendor"
 
 AUTO_LAYOUT_REV="a8881e585339c1bdbff150e542db45f5aab32c78"
 
-ln -sfn "$ROOT_DIR/vscode-operaton-bpmn-js-modeler" "$ROOT_DIR/vendor/bpmn-js-modeler"
-ln -sfn "$ROOT_DIR/vscode-operaton-dmn-js-modeler" "$ROOT_DIR/vendor/dmn-js-modeler"
-ln -sfn "$ROOT_DIR/vscode-operaton-form-js-modeler" "$ROOT_DIR/vendor/form-js-modeler"
+# Allow checkouts in $ROOT_DIR or next to $ROOT_DIR
+for repo in "vscode-operaton-bpmn-js-modeler" "vscode-operaton-dmn-js-modeler" "vscode-operaton-form-js-modeler"; do
+    if [ ! -e "$ROOT_DIR/$repo" ] && [ -d "$ROOT_DIR/../$repo" ]; then
+        ln -sfn "$ROOT_DIR/../$repo" "$ROOT_DIR/$repo"
+    fi
+    if [ ! -e "$ROOT_DIR/$repo" ]; then
+        echo "Warning: Extension repository $repo not found in $ROOT_DIR or $ROOT_DIR/.." >&2
+    fi
+done
+
+if [ -e "$ROOT_DIR/vscode-operaton-bpmn-js-modeler" ]; then
+    ln -sfn "$ROOT_DIR/vscode-operaton-bpmn-js-modeler" "$ROOT_DIR/vendor/bpmn-js-modeler"
+fi
+if [ -e "$ROOT_DIR/vscode-operaton-dmn-js-modeler" ]; then
+    ln -sfn "$ROOT_DIR/vscode-operaton-dmn-js-modeler" "$ROOT_DIR/vendor/dmn-js-modeler"
+fi
+if [ -e "$ROOT_DIR/vscode-operaton-form-js-modeler" ]; then
+    ln -sfn "$ROOT_DIR/vscode-operaton-form-js-modeler" "$ROOT_DIR/vendor/form-js-modeler"
+fi
+
+if [ -e "$ROOT_DIR/vscode-operaton-bpmn-js-modeler/.git" ]; then
+    git -C "$ROOT_DIR/vscode-operaton-bpmn-js-modeler" submodule update --init --recursive
+fi
+
+if [ -d "$ROOT_DIR/vscode-operaton-bpmn-js-modeler/vendor/operaton-element-templates" ]; then
+    node "$ROOT_DIR/scripts/build-element-templates.mjs" "$ROOT_DIR/vscode-operaton-bpmn-js-modeler/vendor"
+fi
 
 if [ ! -d "$ROOT_DIR/vendor/bpmn-auto-layout" ]; then
     git clone https://github.com/datakurre/bpmn-auto-layout.git "$ROOT_DIR/vendor/bpmn-auto-layout"
@@ -34,7 +58,9 @@ fi
 # the vendor/bpmn-js-modeler symlink above — resolves inside the
 # vscode-operaton-bpmn-js-modeler checkout, not under the top-level vendor/
 # built here. Link it through so `npm run desktop:dev` can find it.
-mkdir -p "$ROOT_DIR/vscode-operaton-bpmn-js-modeler/vendor"
-ln -sfn "$ROOT_DIR/vendor/bpmn-auto-layout" "$ROOT_DIR/vscode-operaton-bpmn-js-modeler/vendor/bpmn-auto-layout"
+if [ -d "$ROOT_DIR/vscode-operaton-bpmn-js-modeler" ]; then
+    mkdir -p "$ROOT_DIR/vscode-operaton-bpmn-js-modeler/vendor"
+    ln -sfn "$ROOT_DIR/vendor/bpmn-auto-layout" "$ROOT_DIR/vscode-operaton-bpmn-js-modeler/vendor/bpmn-auto-layout"
+fi
 
 echo "Vendor setup completed in $ROOT_DIR/vendor"

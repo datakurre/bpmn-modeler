@@ -61,8 +61,30 @@
     filter: invert(58%) sepia(0%) saturate(1864%) hue-rotate(184deg) brightness(95%) contrast(87%) !important;
 }
 
-.djs-element > .djs-visual {
-    filter: invert(1);
+/*
+ * bpmn-js sets default colors inline, so these rules use !important and match those default
+ * values. Colors chosen by the user are different values and are left alone.
+ */
+.djs-element > .djs-visual [style*="fill: white"] {
+    fill: var(--dt-surface-a20) !important;
+}
+
+.djs-element > .djs-visual [style*="fill: rgb(204, 204, 204)"] {
+    fill: var(--dt-surface-a30) !important;
+}
+
+.djs-element > .djs-visual [style*="fill: rgb(34, 36, 42)"],
+.djs-label text[style*="fill: rgb(34, 36, 42)"] {
+    fill: var(--dt-surface-a70) !important;
+}
+
+.djs-element > .djs-visual [style*="stroke: rgb(34, 36, 42)"],
+marker path[style*="stroke: rgb(34, 36, 42)"] {
+    stroke: var(--dt-surface-a70) !important;
+}
+
+marker path[style*="fill: rgb(34, 36, 42)"] {
+    fill: var(--dt-surface-a70) !important;
 }
 
 .djs-direct-editing-parent {

@@ -33,6 +33,10 @@ export default defineConfig({
                 __dirname,
                 "../../vendor/bpmn-js-modeler/vendor/operaton-element-templates-validator/dist/index.js",
             ),
+            "operaton-element-templates": resolve(
+                __dirname,
+                "../../vendor/bpmn-js-modeler/vendor/operaton-element-templates",
+            ),
         },
     },
     build: {

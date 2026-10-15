@@ -1,0 +1,5 @@
+html,
+body {
+    color: var(--dt-surface-a70);
+    background-color: var(--dt-surface-a0);
+}

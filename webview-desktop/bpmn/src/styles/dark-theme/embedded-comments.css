@@ -1,0 +1,10 @@
+@import "./colors.css";
+
+:root {
+    --comments-overlay-background: var(--dt-surface-a20);
+    --comments-overlay-border: var(--dt-surface-a40);
+    --comments-divider: var(--dt-surface-a40);
+    --comments-icon-hover: var(--dt-surface-a60);
+    --comments-input-background: var(--dt-surface-a0);
+    --comments-input-color: var(--dt-surface-a70);
+}
